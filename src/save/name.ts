@@ -34,7 +34,7 @@ const SEPARATOR_EDGES = new RegExp(`^${SEPARATOR_CLASS}+|${SEPARATOR_CLASS}+$`, 
 const EMPTY = "\u0000";
 const EMPTY_WITH_SEPARATORS = new RegExp(`(${SEPARATOR_CLASS}*)${EMPTY}(${SEPARATOR_CLASS}*)`);
 
-/** Longest base name in UTF-8 bytes; leaves room for "-123" and the extension within 255. */
+/** Longest base name in UTF-8 bytes; leaves room for " 123" and the extension within 255. */
 export const MAX_BASENAME_BYTES = 200;
 
 const VARIABLE = /\{(original|note|size|date:([^}]*))\}/g;

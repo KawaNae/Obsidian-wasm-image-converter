@@ -4,7 +4,7 @@
 import { App, TFile, TFolder, moment, normalizePath } from "obsidian";
 import { SaveSettings } from "../settings";
 import { DateFormatter, resolveName } from "./name";
-import { availableName, fileName, joinPath, nameSet, parentPath, replacementName } from "./paths";
+import { attachmentFolderFor, availableName, fileName, joinPath, nameSet, parentPath, replacementName } from "./paths";
 
 // The typings declare `moment` as the module namespace, which TypeScript
 // does not consider callable; at runtime it is the moment function.
@@ -22,6 +22,14 @@ export interface NewFileContext {
   originalName?: string;
   /** Time used for {date:...}; now when omitted */
   date?: Date;
+}
+
+/** Where a replaced file moves to; see replaceExisting. */
+export interface ReplaceTarget {
+  /** Vault folder; "" or "/" is the root. Created when missing */
+  folder: string;
+  /** Base name without extension, already resolved from any template */
+  basename: string;
 }
 
 export interface ReplaceResult {
@@ -73,8 +81,8 @@ export function newFileBasename(context: NewFileContext, sizeBytes: number): str
  *
  * - "obsidian": Obsidian's attachment setting decides the folder and avoids
  *   duplicate names (fileManager.getAvailablePathForAttachment).
- * - "folder": the folder is created when missing, and "-1", "-2", ... is
- *   added to the name until it is free.
+ * - "folder": the folder is created when missing, and " 1", " 2", ... is
+ *   added to the name until it is free, as Obsidian does.
  */
 export async function saveNew(app: App, blob: Blob, extension: string, context: NewFileContext): Promise<TFile> {
   const basename = newFileBasename(context, blob.size);
@@ -98,23 +106,35 @@ export async function saveNew(app: App, blob: Blob, extension: string, context: 
 
 /**
  * Replaces the content of an existing image with an encoded image of
- * (possibly) another format. The file keeps its folder and base name; only
- * the extension changes, with a number added when another file already has
- * the new name. The rename goes through fileManager.renameFile, which
- * updates the links to the file.
+ * (possibly) another format. Without `target` the file keeps its folder and
+ * base name and only the extension changes; with `target` it moves to that
+ * folder and base name. A number is added when another file already has the
+ * new name. The rename goes through fileManager.renameFile, which updates the
+ * links to the file.
  *
  * On failure the original content and path are restored and the error is
  * rethrown. Whether a larger result should be skipped is the caller's
  * policy: compare blob.size with file.stat.size before calling.
  */
-export async function replaceExisting(app: App, file: TFile, blob: Blob, extension: string): Promise<ReplaceResult> {
+export async function replaceExisting(
+  app: App,
+  file: TFile,
+  blob: Blob,
+  extension: string,
+  target?: ReplaceTarget
+): Promise<ReplaceResult> {
   const originalSize = file.stat.size;
   const originalPath = file.path;
   const originalData = await app.vault.readBinary(file);
 
-  const folder = file.parent ?? app.vault.getRoot();
-  const siblings = folder.children.filter(c => c !== file).map(c => c.name);
-  const newName = replacementName(file.basename, file.extension, extension, nameSet(siblings));
+  const currentFolder = file.parent ?? app.vault.getRoot();
+  const folder = target ? await ensureFolder(app, normalizeFolder(target.folder)) : currentFolder;
+  const basename = target?.basename ?? file.basename;
+  const isTaken = nameSet(folder.children.filter(c => c !== file).map(c => c.name));
+  const keepsName = folder.path === currentFolder.path && basename === file.basename;
+  const newName = keepsName
+    ? replacementName(file.basename, file.extension, extension, isTaken)
+    : availableName(basename, extension, isTaken);
   const data = await blob.arrayBuffer();
 
   try {
@@ -133,6 +153,20 @@ export async function replaceExisting(app: App, file: TFile, blob: Blob, extensi
   }
 
   return { file, originalSize, convertedSize: blob.size };
+}
+
+/**
+ * The folder Obsidian's attachment setting gives for the note at
+ * `sourcePath`, "" for the root. Shown in the dialog before saving, so it
+ * must not create the folder as fileManager.getAvailablePathForAttachment
+ * does. There is no public API for this: the setting is read with the
+ * undocumented Vault.getConfig, and null is returned when that is missing.
+ */
+export function attachmentFolder(app: App, sourcePath: string): string | null {
+  const vault = app.vault as unknown as { getConfig?: (key: string) => unknown };
+  if (typeof vault.getConfig !== "function") return null;
+  const setting = vault.getConfig("attachmentFolderPath");
+  return attachmentFolderFor(typeof setting === "string" ? setting : "/", sourcePath || null);
 }
 
 /**
