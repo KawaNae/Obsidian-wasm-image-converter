@@ -81,7 +81,7 @@ const fixJsquash = {
 
       if (wasmRel && /(?:^|[/\\])webp_enc\.wasm$/.test(wasmRel)) {
         // 非SIMD版はバンドルしない（非SIMD環境でのみ実行時ダウンロード。
-        // webp-converter.ts の nonSimdFallback が init(module) で供給する）
+        // src/conversion/webp-encoder.ts の nonSimdFallback が init(module) で供給する）
         code = code.replace(
           /new\s+URL\s*\(\s*[^,]+,\s*(?:import\.meta|import_meta)\.url\s*\)/g,
           'new URL("data:,")'

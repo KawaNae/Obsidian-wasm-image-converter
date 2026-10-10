@@ -1,6 +1,7 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { EncodeSettings, SaveSettings } from "./settings";
-import { encodeImage } from "./converters/encode";
+import { convertBlob } from "./conversion/convert";
+import { encoderFor } from "./conversion/encoders";
 
 export interface ConversionResult {
   path: string;
@@ -52,7 +53,8 @@ export async function saveImageAndInsert(
   folder: string
 ): Promise<ConversionResult> {
   folder = normalizePath(folder);
-  const { blob: convertedBlob, extension } = await encodeImage(file, encode);
+  const convertedBlob = await convertBlob(file, encode);
+  const extension = encoderFor(encode.format).extension;
 
   const fileName = generateFileName(extension, convertedBlob.size);
   const destPath = normalizePath(`${folder}/${fileName}`);
@@ -100,7 +102,8 @@ export async function convertAndReplaceFile(
   encode: EncodeSettings,
   folder: string
 ): Promise<ConversionResult> {
-  const { blob, extension } = await encodeImage(file, encode);
+  const blob = await convertBlob(file, encode);
+  const extension = encoderFor(encode.format).extension;
   // Overwrite and rename
   return replaceFileContentAndPath(app, targetFile, blob, folder, extension);
 }

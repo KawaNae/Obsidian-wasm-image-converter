@@ -1,4 +1,5 @@
-import { EncodeSettings, FORMAT_OPTIONS, ImageFormat, Preset, cloneEncode, resolvePreset } from "../../settings";
+import { EncodeSettings, ImageFormat, Preset, cloneEncode, resolvePreset } from "../../settings";
+import { ENCODER_LIST, encoderFor } from "../../conversion/encoders";
 
 export class SettingsPanel {
     element: HTMLDivElement;
@@ -59,10 +60,10 @@ export class SettingsPanel {
             this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
-        FORMAT_OPTIONS.forEach(option => {
+        ENCODER_LIST.forEach(encoder => {
             const opt = document.createElement("option");
-            opt.value = option.value;
-            opt.textContent = option.label;
+            opt.value = encoder.format;
+            opt.textContent = encoder.label;
             this.formatSelect.appendChild(opt);
         });
         this.formatSelect.value = this.encode.format;
@@ -122,7 +123,7 @@ export class SettingsPanel {
 
     /** Disable quality input for lossless formats (PNG) */
     private updateQualityState() {
-        const isLossless = this.encode.format === "png";
+        const isLossless = !encoderFor(this.encode.format).lossy;
         this.qualityInput.disabled = isLossless;
         if (this.qualityRow) {
             this.qualityRow.style.opacity = isLossless ? "0.5" : "1";

@@ -1,8 +1,8 @@
 import { App, Modal, Notice, setIcon, TFile } from "obsidian";
 import { EncodeSettings, PluginSettings } from "../settings";
 import { saveImageAndInsert, convertAndReplaceFile, resolveSaveFolder } from "../file-service";
-import { sizePredictionService, SizePredictionResult } from "../prediction/size-predictor";
-import { predictBySampleEncode } from "../prediction/sampled-predictor";
+import { decode, DecodedImage } from "../conversion/decode";
+import { analyze, estimateByHeuristic, estimateBySample, ImageStats, SizePrediction } from "../conversion/predict";
 
 import { isAnimatedGif } from "../utils/gif-check";
 import { DropZone } from "./components/drop-zone";
@@ -12,6 +12,13 @@ export async function openImageConverterModal(app: App, settings: PluginSettings
     return new Promise((resolve) => {
         new ImageConverterModal(app, settings, initialFile, targetTFile, resolve).open();
     });
+}
+
+/** The single selected file, decoded once and reused by every prediction. */
+interface PredictionSource {
+    file: File;
+    /** null when decoding failed or the source was released before it finished */
+    ready: Promise<{ decoded: DecodedImage; stats: ImageStats } | null>;
 }
 
 class ImageConverterModal extends Modal {
@@ -37,6 +44,7 @@ class ImageConverterModal extends Modal {
     private pasteBtn!: HTMLButtonElement;
     private importBtn!: HTMLButtonElement;
     private predictionGeneration = 0;
+    private predictionSource: PredictionSource | null = null;
 
     constructor(app: App, settings: PluginSettings, initialFile: File | null, targetTFile: TFile | null, onResult: (value?: string) => void) {
         super(app);
@@ -165,6 +173,7 @@ class ImageConverterModal extends Modal {
 
     onClose() {
         this.closedFlag = true;
+        this.releasePredictionSource();
         this.dropZone?.dispose();
         this.contentEl.empty();
         if (this.converting) {
@@ -227,32 +236,31 @@ class ImageConverterModal extends Modal {
     private async updatePrediction() {
         const generation = ++this.predictionGeneration;
 
-        if (this.selectedFiles.length === 0) {
-            this.infoDiv.textContent = "";
-            return;
-        }
-
         if (this.selectedFiles.length !== 1) {
-            const totalSizeKB = (this.selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1);
-            this.infoDiv.textContent = `${this.selectedFiles.length} images selected (${totalSizeKB}kB total)`;
+            this.releasePredictionSource();
+            if (this.selectedFiles.length === 0) {
+                this.infoDiv.textContent = "";
+            } else {
+                const totalSizeKB = (this.selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1);
+                this.infoDiv.textContent = `${this.selectedFiles.length} images selected (${totalSizeKB}kB total)`;
+            }
             return;
         }
 
         const file = this.selectedFiles[0];
-        const predictionOptions = this.settingsPanel.getEncode();
+        const encode = this.settingsPanel.getEncode();
 
-        const useSampled = this.settings.enableSampledPrediction;
+        const source = await this.loadPredictionSource(file);
+        if (generation !== this.predictionGeneration) return;
+        if (!source) {
+            this.renderPredictionLine(file, null, false);
+            return;
+        }
 
         // Phase 1: instant heuristic estimate
-        let heuristic: SizePredictionResult | null = null;
-        try {
-            heuristic = await sizePredictionService.predictSize(file, predictionOptions);
-        } catch (error) {
-            console.warn('Size prediction failed:', error);
-        }
-        if (generation !== this.predictionGeneration) return;
+        const heuristic = estimateByHeuristic(source.stats, encode);
 
-        if (!useSampled) {
+        if (!this.settings.enableSampledPrediction) {
             this.renderPredictionLine(file, heuristic, false);
             return;
         }
@@ -262,8 +270,11 @@ class ImageConverterModal extends Modal {
         // 300ms prevents the spinner from flickering too fast to read.
         this.renderPredictionLine(file, heuristic, true);
         const shownAt = performance.now();
+        // The sample encode blocks the main thread; let the heuristic paint first
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+        if (generation !== this.predictionGeneration) return;
 
-        const refined = await predictBySampleEncode(file, predictionOptions);
+        const refined = await estimateBySample(source.decoded, encode);
         if (generation !== this.predictionGeneration) return;
 
         const elapsed = performance.now() - shownAt;
@@ -275,11 +286,45 @@ class ImageConverterModal extends Modal {
         this.renderPredictionLine(file, refined ?? heuristic, false);
     }
 
+    /** Decodes `file` once; later calls for the same file share the result. */
+    private loadPredictionSource(file: File): PredictionSource["ready"] {
+        if (this.predictionSource?.file === file) return this.predictionSource.ready;
+        this.releasePredictionSource();
+
+        const source: PredictionSource = {
+            file,
+            ready: decode(file).then(
+                decoded => {
+                    if (this.predictionSource !== source) {
+                        // Released (other selection, modal closed) while decoding
+                        decoded.close();
+                        return null;
+                    }
+                    return { decoded, stats: analyze(decoded) };
+                },
+                error => {
+                    console.warn("Failed to decode image for size prediction:", error);
+                    return null;
+                }
+            ),
+        };
+        this.predictionSource = source;
+        return source.ready;
+    }
+
+    /** Closes the decoded image of the current prediction source. */
+    private releasePredictionSource() {
+        const source = this.predictionSource;
+        if (!source) return;
+        this.predictionSource = null;
+        source.ready.then(result => result?.decoded.close());
+    }
+
     /**
      * @param loading - when true, shows a spinner and uses a rounded
      *   approximate value to signal "still refining"
      */
-    private renderPredictionLine(file: File, prediction: SizePredictionResult | null, loading: boolean) {
+    private renderPredictionLine(file: File, prediction: SizePrediction | null, loading: boolean) {
         const originalKB = (file.size / 1024).toFixed(1);
         this.infoDiv.textContent = '';
         this.infoDiv.appendChild(document.createTextNode(`${file.name}: ${originalKB}kB`));

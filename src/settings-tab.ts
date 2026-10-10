@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting, Modal } from "obsidian";
 import WasmImageConverterPlugin from "./main";
-import { Preset, FORMAT_OPTIONS, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, builtinPresets, createPresetId, getFormatLabel, repairPresetRefs } from "./settings";
+import { Preset, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, builtinPresets, createPresetId, repairPresetRefs } from "./settings";
+import { ENCODER_LIST, encoderFor } from "./conversion/encoders";
 
 export class WasmImageConverterSettingTab extends PluginSettingTab {
   plugin: WasmImageConverterPlugin;
@@ -233,7 +234,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
 
       new Setting(el)
         .setName(preset.name)
-        .setDesc(`Converter: ${getFormatLabel(format)}, ` +
+        .setDesc(`Converter: ${encoderFor(format).label}, ` +
           `Quality: ${(quality * 100).toFixed(0)}%, ` +
           `${resize.enabled ? `Max: ${resize.maxWidth}x${resize.maxHeight}` : "No resize"}, ` +
           `${grayscale ? "Grayscale" : "Color"}`)
@@ -402,8 +403,8 @@ class PresetEditModal extends Modal {
       .setName("Converter")
       .setDesc("Select the image converter to use")
       .addDropdown(dropdown => {
-        FORMAT_OPTIONS.forEach(option => {
-          dropdown.addOption(option.value, option.label);
+        ENCODER_LIST.forEach(encoder => {
+          dropdown.addOption(encoder.format, encoder.label);
         });
         dropdown.setValue(format);
         dropdown.onChange((value) => {

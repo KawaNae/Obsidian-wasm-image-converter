@@ -39,30 +39,8 @@ export interface PluginSettings {
   enableSampledPrediction: boolean; // refine the size prediction with a sample encode
 }
 
-export const FORMAT_OPTIONS: { value: ImageFormat; label: string; description: string }[] = [
-  { value: "webp", label: "WASM WebP", description: "WebP conversion using WebAssembly" },
-  { value: "jpeg", label: "JPEG", description: "JPEG conversion using Canvas API" },
-  { value: "png", label: "PNG", description: "Lossless PNG conversion using Canvas API" },
-  { value: "avif", label: "WASM AVIF", description: "AVIF conversion using WebAssembly (downloaded on first use)" },
-];
-
 export function isImageFormat(value: unknown): value is ImageFormat {
   return value === "webp" || value === "avif" || value === "jpeg" || value === "png";
-}
-
-/** Returns the file extension for a given output format */
-export function getExtensionForFormat(format: ImageFormat): string {
-  switch (format) {
-    case "png": return "png";
-    case "jpeg": return "jpg";
-    case "avif": return "avif";
-    case "webp":
-    default: return "webp";
-  }
-}
-
-export function getFormatLabel(format: ImageFormat): string {
-  return FORMAT_OPTIONS.find(o => o.value === format)?.label ?? format;
 }
 
 export const DEFAULT_PRESET_ID = "default";

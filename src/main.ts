@@ -1,12 +1,10 @@
 import { Notice, Plugin, Editor, Platform, MarkdownView, TFile, Modal, normalizePath } from "obsidian";
-import { PluginSettings, Preset, createDefaultSettings, getExtensionForFormat, resolvePreset } from "./settings";
+import { PluginSettings, Preset, createDefaultSettings, resolvePreset } from "./settings";
 import { migrateSettings } from "./settings-migration";
 import { openImageConverterModal } from "./ui/image-converter-modal";
 import { WasmImageConverterSettingTab } from "./settings-tab";
-import { sizePredictionService } from "./prediction/size-predictor";
-import { WebPSizePredictor } from "./prediction/webp-predictor";
-import { JPEGSizePredictor, PNGSizePredictor, AVIFSizePredictor } from "./prediction/canvas-predictor";
-import { initWasmLoaderContext } from "./converters/wasm-loader";
+import { initWasmLoaderContext } from "./conversion/wasm-loader";
+import { encoderFor } from "./conversion/encoders";
 import { saveImageAndInsert, saveOriginalFile, convertAndReplaceFile, resolveSaveFolder } from "./file-service";
 import { isAnimatedGif } from "./utils/gif-check";
 
@@ -15,12 +13,6 @@ export default class WasmImageConverterPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-
-    // Initialize size prediction service
-    sizePredictionService.registerPredictor(new WebPSizePredictor());
-    sizePredictionService.registerPredictor(new JPEGSizePredictor());
-    sizePredictionService.registerPredictor(new PNGSizePredictor());
-    sizePredictionService.registerPredictor(new AVIFSizePredictor());
 
     // Initialize remote WASM loaders (stores references only, no download yet)
     initWasmLoaderContext(this.app, this.manifest.dir!);
@@ -78,7 +70,7 @@ export default class WasmImageConverterPlugin extends Plugin {
         if (supportedExtensions.includes(file.extension.toLowerCase())) {
           menu.addItem((item) => {
             const preset = resolvePreset(this.settings, this.settings.defaultPresetId);
-            const ext = getExtensionForFormat(preset?.encode.format ?? "webp").toUpperCase();
+            const ext = encoderFor(preset?.encode.format ?? "webp").extension.toUpperCase();
             item
               .setTitle(`Convert to ${ext}...`)
               .setIcon("image-file")
