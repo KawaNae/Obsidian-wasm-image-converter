@@ -48,8 +48,8 @@ describe("isGifFile", () => {
 });
 
 describe("joinLinks", () => {
-  it("keeps the order and puts each link on its own line", () => {
-    expect(joinLinks(["![[a.webp]]", "![[b.webp]]", "![[c.webp]]"])).toBe("![[a.webp]]\n![[b.webp]]\n![[c.webp]]");
+  it("keeps the order and separates the links by an empty line", () => {
+    expect(joinLinks(["![[a.webp]]", "![[b.webp]]", "![[c.webp]]"])).toBe("![[a.webp]]\n\n![[b.webp]]\n\n![[c.webp]]");
     expect(joinLinks(["![[a.webp]]"])).toBe("![[a.webp]]");
     expect(joinLinks([])).toBe("");
   });

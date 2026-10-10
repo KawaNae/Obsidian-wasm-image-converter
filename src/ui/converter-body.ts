@@ -43,7 +43,7 @@ interface DecodeSource {
  * in. The host calls build() once with its body element and dispose() when
  * it closes; the body asks the host to close after a conversion.
  *
- * The result (embed links of the saved images, one per line, or undefined)
+ * The result (embed links of the saved images, separated by an empty line, or undefined)
  * is delivered exactly once, after the window closed.
  */
 export class ConverterBody {

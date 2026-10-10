@@ -10,7 +10,7 @@ import { IncomingAction, isGifFile, joinLinks, planIncoming } from "./targets";
 /**
  * Converts images dropped or pasted into the editor (the "auto-convert"
  * setting) and inserts their links at the drop position or the cursor: all
- * links at once, in the order of the files, one per line. Other files of the
+ * links at once, in the order of the files, separated by an empty line. Other files of the
  * same drop or paste (PDFs, non-target images) are saved as they are, as
  * Obsidian saves attachments, and linked in their place among the others.
  *

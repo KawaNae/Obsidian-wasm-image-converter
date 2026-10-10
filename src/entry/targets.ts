@@ -50,9 +50,12 @@ export function isGifFile(file: IncomingFile): boolean {
   return file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif");
 }
 
-/** The links of several images as inserted at once: in order, one per line. */
+/**
+ * The links of several images as inserted at once: in order, separated by
+ * an empty line, as Obsidian separates the links of a drop it handles itself.
+ */
 export function joinLinks(links: readonly string[]): string {
-  return links.join("\n");
+  return links.join("\n\n");
 }
 
 /** Whether `path` lies in `folder` or its subfolders; "" and "/" are the whole vault. */

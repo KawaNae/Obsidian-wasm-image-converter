@@ -4,7 +4,7 @@ import { ConverterBody, ConverterRequest } from "./converter-body";
 
 /**
  * Opens the converter dialog and resolves with the embed links of the saved
- * images (one per line), or undefined when nothing was converted.
+ * images (separated by an empty line), or undefined when nothing was converted.
  */
 export function openImageConverterModal(app: App, settings: PluginSettings, request: ConverterRequest): Promise<string | undefined> {
     return new Promise((resolve) => {
