@@ -26,7 +26,7 @@ A fast, efficient image conversion plugin for Obsidian that converts images to W
 - **Save Location**: Follow Obsidian's attachment setting or use a fixed folder, with a file name template
 
 ### 📋 Convenient Input Methods
-- **Modal UI**: Convert with detailed settings configuration. The name field holds the name template (an example of the expanded name is shown below it), and the folder field suggests the vault's folders; a folder typed there applies to that conversion only. When the save location follows Obsidian's setting, the folder field is left empty and Obsidian decides the folder when saving. A preset whose values were changed shows "(modified)"
+- **Converter dialog**: Convert with detailed settings configuration. On phones the dialog opens as a bottom sheet that can be pulled down to close. The name field holds the name template (an example of the expanded name is shown below it), and the folder field suggests the vault's folders; a folder typed there applies to that conversion only. When the save location follows Obsidian's setting, the folder field is left empty and Obsidian decides the folder when saving. A preset whose values were changed shows "(modified)"
 - **File menu**: "Convert to ...", which replaces the file in place; changing the name or folder in the dialog renames or moves it
 - **Batch convert**: the "Batch Convert Images" command (whole vault) or "Batch convert images in this folder" in the folder menu. The preset is chosen in the confirmation dialog; images that would get larger are skipped, and one notice shows the progress with a cancel button
 - **Clipboard Support**: Paste images directly
@@ -135,7 +135,7 @@ src/
 ├── main.ts                       # Main plugin class
 ├── settings.ts                   # Settings interface and defaults
 ├── settings-tab.ts              # Settings UI component
-├── image-converter-modal.ts     # Main UI modal
+├── ui/                          # Converter dialog (a bottom sheet on phones)
 ├── save/                        # Name template, saveNew, replaceExisting, embed links
 └── conversion/                  # Decode once, render, encode, predict size
     ├── decode.ts / render.ts    # Decoding and resize/grayscale to RGBA

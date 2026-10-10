@@ -182,17 +182,29 @@ src/
 │   ├── drop-position.ts       # 公開の API でドロップの位置を得る（EditorView.findFromDOM、posAtCoords）
 │   ├── batch-convert.ts       # 一括変換（vault 全体、フォルダ）、確認のダイアログ、進捗の Notice
 │   └── targets.ts             # 純粋: 対象の判定、リンクの連結、一括変換の対象と集計
-├── ui/                        # モーダル（右クリックメニューの置き換えのモードを含む）
-│   ├── image-converter-modal.ts # Modal の殻。中身は ConverterBody.build(bodyEl)
-│   ├── converter-body.ts      # モーダルの中身。予測のデコードを変換でも使う
+├── ui/                        # 変換のダイアログ（右クリックメニューの置き換えのモードを含む）
+│   ├── converter-dialog.ts    # openConverterDialog: 殻 OverlayShell に ConverterBody を載せる
+│   ├── converter-body.ts      # ダイアログの中身。予測のデコードを変換でも使う
 │   ├── save-plan.ts           # 純粋: 名前と保存先の欄から saveNew / replaceExisting の引数を決める
+│   ├── overlay/               # ダイアログの殻（obsidian-task-viewer から移植）
+│   │   ├── overlay-shell.ts   # 中央の表示、.is-phone でボトムシート。ESC、背景、戻る操作、引いて閉じる
+│   │   ├── keyboard-aware-container.ts # ソフトウェアキーボードに隠れる欄を上へスクロールする
+│   │   ├── keyboard-state.ts  # 純粋: Capacitor のキーボードの高さ、キーボードの上端
+│   │   ├── hotkey-shield.ts   # フォーカスが窓にある間、ホットキーを止める
+│   │   ├── history-back.ts    # 戻る操作を Obsidian の onHistoryBack のスタックで受ける
+│   │   ├── overlay-registry.ts # 純粋: 開いている窓。アンロードで閉じる
+│   │   └── layer-order.ts     # 純粋: 窓の後ろに body へ置かれた要素（候補の一覧）を窓の内側とみなす
 │   └── components/
 │       ├── drop-zone.ts
 │       ├── folder-suggest.ts  # 保存先の欄のフォルダの候補
+│       ├── shown-suggest.ts   # 候補の一覧の基底。IME の Enter で選ばず、一覧の間はホットキーを止める
+│       ├── form-enter.ts      # 純粋: IME の確定の Enter の判定
 │       ├── save-fields.ts     # 名前と保存先の欄、名前の見本
 │       └── settings-panel.ts  # 変換設定の欄。値を変えたプリセットに「(modified)」を付ける
 ├── utils/
 │   └── gif-check.ts
-└── styles/
+└── styles/                    # ビルドで _variables.css、_overlay.css、styles.css の順に連結する
+    ├── _variables.css
+    ├── _overlay.css           # ダイアログの殻
     └── styles.css             # スタイルシート
 ```
