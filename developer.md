@@ -160,14 +160,20 @@ src/
 ├── settings-tab.ts            # 設定タブ UI（タブベース）
 ├── globals.d.ts               # グローバル型宣言 (__BUILD_TIME__)
 ├── file-service.ts            # ファイル操作サービス
-├── converters/                # 画像変換ロジック
-│   ├── webp-converter.ts      # WASM WebP 変換
-│   ├── canvas-converter.ts    # Canvas API 変換（JPEG/PNG）
-│   └── grayscale.ts           # グレースケール変換
-├── prediction/                # サイズ予測
-│   ├── size-predictor.ts
-│   ├── webp-predictor.ts
-│   └── canvas-predictor.ts
+├── conversion/                # 変換の層（Obsidian の保存や UI に依存しない）
+│   ├── decode.ts              # decode(blob): 一度だけデコードし、予測と変換で使い回す
+│   ├── render.ts              # render(decoded, encode, size?): リサイズとグレースケールを適用した RGBA
+│   ├── encoders.ts            # 形式ごとの拡張子、MIME、非可逆か、encode() の登録表
+│   ├── webp-encoder.ts        # jSquash WebP
+│   ├── avif-encoder.ts        # jSquash AVIF
+│   ├── canvas-encoder.ts      # Canvas API（JPEG/PNG）
+│   ├── convert.ts             # convert(decoded, encode) / convertBlob(blob, encode)
+│   ├── predict.ts             # analyze(), estimateBySample()
+│   ├── estimate.ts            # 純粋: 経験式、サンプルの計画と外挿
+│   ├── geometry.ts            # 純粋: リサイズの寸法、quality の変換
+│   ├── grayscale.ts           # 純粋: グレースケール
+│   ├── wasm-assets.ts         # 純粋: 取得する WASM の版と SHA-256
+│   └── wasm-loader.ts         # WASM の取得、検証、キャッシュ
 ├── ui/                        # UI コンポーネント
 │   ├── image-converter-modal.ts
 │   └── components/

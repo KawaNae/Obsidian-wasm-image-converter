@@ -123,12 +123,12 @@ src/
 ├── settings-tab.ts              # 設定UIコンポーネント
 ├── image-converter-modal.ts     # メインUI モーダル
 ├── file-service.ts              # ファイル操作
-├── converters/
-│   ├── webp-converter.ts        # WebP変換ロジック
-│   └── grayscale.ts             # グレースケール変換
-└── prediction/
-    ├── size-predictor.ts        # ファイルサイズ予測サービス
-    └── webp-predictor.ts        # WebP特化予測ロジック
+└── conversion/                  # 一度のデコード、描画、エンコード、サイズ予測
+    ├── decode.ts / render.ts    # デコードと、リサイズ・グレースケールを適用した RGBA
+    ├── encoders.ts              # エンコーダの登録表（WebP, AVIF, JPEG, PNG）
+    ├── convert.ts               # デコード → 描画 → エンコード
+    ├── predict.ts / estimate.ts # サイズ予測（経験式とサンプル）
+    └── wasm-loader.ts           # WASM エンコーダの取得、検証、キャッシュ
 ```
 
 ### 技術仕様

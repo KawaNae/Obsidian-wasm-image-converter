@@ -129,12 +129,12 @@ src/
 ├── settings-tab.ts              # Settings UI component
 ├── image-converter-modal.ts     # Main UI modal
 ├── file-service.ts              # File operations
-├── converters/
-│   ├── webp-converter.ts        # WebP conversion logic
-│   └── grayscale.ts             # Grayscale conversion
-└── prediction/
-    ├── size-predictor.ts        # File size prediction service
-    └── webp-predictor.ts        # WebP-specific prediction logic
+└── conversion/                  # Decode once, render, encode, predict size
+    ├── decode.ts / render.ts    # Decoding and resize/grayscale to RGBA
+    ├── encoders.ts              # Encoder registry (WebP, AVIF, JPEG, PNG)
+    ├── convert.ts               # decode -> render -> encode
+    ├── predict.ts / estimate.ts # Size prediction (heuristic + sample encode)
+    └── wasm-loader.ts           # Download, verify and cache WASM encoders
 ```
 
 ### Technical Specifications
