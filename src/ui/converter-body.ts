@@ -1,45 +1,55 @@
-import { App, Modal, Notice, setIcon, TFile } from "obsidian";
-import { EncodeSettings, PluginSettings, SaveSettings } from "../settings";
-import { embedLink, replaceExisting, saveNew } from "../save/save";
-import { convertBlob } from "../conversion/convert";
+import { App, Notice, setIcon, TFile } from "obsidian";
+import { EncodeSettings, PluginSettings } from "../settings";
+import { attachmentFolder, embedLink, formatDateWithMoment, replaceExisting, ReplaceTarget, saveNew } from "../save/save";
+import { resolveName } from "../save/name";
+import { convert, convertBlob } from "../conversion/convert";
 import { encoderFor } from "../conversion/encoders";
 import { decode, DecodedImage } from "../conversion/decode";
 import { analyze, estimateByHeuristic, estimateBySample, ImageStats, SizePrediction } from "../conversion/predict";
-
 import { isAnimatedGif } from "../utils/gif-check";
 import { DropZone } from "./components/drop-zone";
 import { SettingsPanel } from "./components/settings-panel";
+import { SaveFields } from "./components/save-fields";
+import { canonicalFolder, displayFolder, planNewFile, planReplacement } from "./save-plan";
+import { joinLinks } from "../entry/targets";
 
-/**
- * @param sourcePath - note the links are for ("" when none): decides the
- *   attachment folder in the "obsidian" mode, {note} and the link paths
- */
-export async function openImageConverterModal(app: App, settings: PluginSettings, sourcePath: string, initialFile: File | null = null, targetTFile: TFile | null = null): Promise<string | undefined> {
-    return new Promise((resolve) => {
-        new ImageConverterModal(app, settings, sourcePath, initialFile, targetTFile, resolve).open();
-    });
+/** What the dialog converts, and for which note. */
+export interface ConverterRequest {
+    /** Note the links are for ("" when none): the attachment folder in the "obsidian" mode, {note}, link paths */
+    sourcePath: string;
+    /** File shown from the start; the user cannot pick others */
+    initialFile?: File | null;
+    /** Replace mode: the vault file whose content initialFile is */
+    target?: TFile | null;
 }
 
-/** Save destination as shown in the dialog. */
-function describeDestination(save: SaveSettings, targetTFile: TFile | null): string {
-    if (targetTFile) return `${targetTFile.parent?.path ?? "/"} (in place)`;
-    if (save.destination.mode === "obsidian") return "Obsidian's attachment folder";
-    return `${save.destination.folder.replace(/\/+$/, "")}/`;
+/** The window the body sits in: a Modal now, a bottom sheet later. */
+export interface ConverterHost {
+    close(): void;
 }
 
-/** The single selected file, decoded once and reused by every prediction. */
-interface PredictionSource {
+/** {size} in the name example before anything is selected. */
+const EXAMPLE_SIZE = 123456;
+
+/** The single selected file, decoded once and reused by every prediction and the conversion. */
+interface DecodeSource {
     file: File;
     /** null when decoding failed or the source was released before it finished */
     ready: Promise<{ decoded: DecodedImage; stats: ImageStats } | null>;
 }
 
-class ImageConverterModal extends Modal {
-    private settings: PluginSettings;
-    private sourcePath: string;
-    private initialFile: File | null;
-    private targetTFile: TFile | null;
-    private onResult: (value?: string) => void;
+/**
+ * Content of the converter dialog, independent of the window it is shown
+ * in. The host calls build() once with its body element and dispose() when
+ * it closes; the body asks the host to close after a conversion.
+ *
+ * The result (embed links of the saved images, one per line, or undefined)
+ * is delivered exactly once, after the window closed.
+ */
+export class ConverterBody {
+    private readonly sourcePath: string;
+    private readonly initialFile: File | null;
+    private readonly target: TFile | null;
 
     private selectedFiles: File[] = [];
     private converting = false;
@@ -50,24 +60,30 @@ class ImageConverterModal extends Modal {
 
     private dropZone!: DropZone;
     private settingsPanel!: SettingsPanel;
+    private saveFields!: SaveFields;
     private infoDiv!: HTMLElement;
     private progressContainer!: HTMLElement;
     private progressFill!: HTMLElement;
     private progressText!: HTMLElement;
     private convertBtn!: HTMLButtonElement;
-    private pasteBtn!: HTMLButtonElement;
-    private importBtn!: HTMLButtonElement;
+    private pasteBtn: HTMLButtonElement | null = null;
+    private importBtn: HTMLButtonElement | null = null;
     private predictionGeneration = 0;
-    private predictionSource: PredictionSource | null = null;
+    private decodeSource: DecodeSource | null = null;
+    /** Latest size prediction of the single selected file, for the name example */
+    private predictedSize: number | null = null;
 
-    constructor(app: App, settings: PluginSettings, sourcePath: string, initialFile: File | null, targetTFile: TFile | null, onResult: (value?: string) => void) {
-        super(app);
-        // Read-only here: the panel edits its own copy of the encoding parameters
-        this.settings = settings;
-        this.sourcePath = sourcePath;
-        this.initialFile = initialFile;
-        this.targetTFile = targetTFile;
-        this.onResult = onResult;
+    constructor(
+        private readonly app: App,
+        /** Read-only here: the panel edits its own copy of the encoding parameters */
+        private readonly settings: PluginSettings,
+        request: ConverterRequest,
+        private readonly host: ConverterHost,
+        private readonly onResult: (value?: string) => void
+    ) {
+        this.sourcePath = request.sourcePath;
+        this.initialFile = request.initialFile ?? null;
+        this.target = request.target ?? null;
     }
 
     /** Resolves the caller's promise exactly once. */
@@ -77,133 +93,109 @@ class ImageConverterModal extends Modal {
         this.onResult(value);
     }
 
-    onOpen() {
-        this.modalEl.addClass("wasm-image-modal");
-        this.titleEl.setText("Image Converter");
-        const { contentEl } = this;
-        contentEl.empty();
-
-        // Info line (file name, size prediction)
-        this.infoDiv = document.createElement("div");
-        this.infoDiv.className = "wasm-image-preview__info";
-        this.infoDiv.style.marginTop = "10px";
-        this.infoDiv.style.marginBottom = "10px";
-        this.infoDiv.style.textAlign = "center";
-
-        // Progress bar (hidden by default)
-        this.progressContainer = document.createElement("div");
-        this.progressContainer.className = "wasm-image-progress";
-        this.progressContainer.style.display = "none";
-        const progressBar = document.createElement("div");
-        progressBar.className = "wasm-image-progress__bar";
-        this.progressFill = document.createElement("div");
-        this.progressFill.className = "wasm-image-progress__fill";
-        progressBar.appendChild(this.progressFill);
-        this.progressText = document.createElement("div");
-        this.progressText.className = "wasm-image-progress__text";
-        this.progressContainer.appendChild(progressBar);
-        this.progressContainer.appendChild(this.progressText);
-
-        this.dropZone = new DropZone((files) => this.handleFilesSelect(files));
-
-        // Source buttons (Paste / Import)
-        const sourceBtnRow = document.createElement("div");
-        sourceBtnRow.className = "wasm-image-drop-zone__buttons";
-        sourceBtnRow.style.marginTop = "15px";
-        sourceBtnRow.style.marginBottom = "0px";
-
-        this.pasteBtn = document.createElement("button");
-        this.pasteBtn.className = "wasm-image-modal__btn wasm-image-drop-zone__btn";
-        this.pasteBtn.style.flex = "1";
-        this.pasteBtn.onclick = () => this.dropZone.handleClipboardPaste();
-        const pasteIcon = document.createElement("span");
-        pasteIcon.className = "wasm-image-modal__btn-icon";
-        setIcon(pasteIcon, "clipboard-paste");
-        const pasteText = document.createElement("span");
-        pasteText.textContent = " Paste from Clipboard";
-        this.pasteBtn.appendChild(pasteIcon);
-        this.pasteBtn.appendChild(pasteText);
-
-        this.importBtn = document.createElement("button");
-        this.importBtn.className = "wasm-image-modal__btn wasm-image-drop-zone__btn";
-        this.importBtn.style.flex = "1";
-        this.importBtn.onclick = () => this.dropZone.triggerFileInput();
-        const importIcon = document.createElement("span");
-        importIcon.className = "wasm-image-modal__btn-icon";
-        setIcon(importIcon, "download");
-        const importText = document.createElement("span");
-        importText.textContent = " Import from system";
-        this.importBtn.appendChild(importIcon);
-        this.importBtn.appendChild(importText);
-
-        sourceBtnRow.appendChild(this.pasteBtn);
-        sourceBtnRow.appendChild(this.importBtn);
-
+    build(bodyEl: HTMLElement) {
         this.settingsPanel = new SettingsPanel(
             this.settings.presets,
             this.settings.defaultPresetId,
-            describeDestination(this.settings.save, this.targetTFile),
             () => this.updatePrediction()
         );
+        bodyEl.appendChild(this.settingsPanel.getElement());
 
-        // ===== Layout assembly (vertical stack) =====
-        contentEl.appendChild(this.settingsPanel.getElement());
+        this.saveFields = this.createSaveFields();
+        bodyEl.appendChild(this.saveFields.element);
+
+        this.dropZone = new DropZone((files) => this.handleFilesSelect(files));
 
         if (!this.initialFile) {
-            contentEl.appendChild(sourceBtnRow);
+            const sourceBtnRow = bodyEl.createDiv({ cls: "wasm-image-drop-zone__buttons" });
+            sourceBtnRow.style.marginTop = "15px";
+            this.pasteBtn = this.createSourceButton(sourceBtnRow, "clipboard-paste", " Paste from Clipboard", () => this.dropZone.handleClipboardPaste());
+            this.importBtn = this.createSourceButton(sourceBtnRow, "download", " Import from system", () => this.dropZone.triggerFileInput());
         } else {
             this.dropZone.setDisabled(true);
         }
 
         this.dropZone.getElement().style.marginTop = this.initialFile ? "15px" : "8px";
-        contentEl.appendChild(this.dropZone.getElement());
+        bodyEl.appendChild(this.dropZone.getElement());
 
-        contentEl.appendChild(this.infoDiv);
-        contentEl.appendChild(this.progressContainer);
+        // Info line (file name, size prediction)
+        this.infoDiv = bodyEl.createDiv({ cls: "wasm-image-preview__info" });
+        this.infoDiv.style.margin = "10px 0";
+        this.infoDiv.style.textAlign = "center";
 
-        const btnRow = document.createElement("div");
-        btnRow.className = "wasm-image-modal__btn-row";
+        // Progress bar (shown for several files)
+        this.progressContainer = bodyEl.createDiv({ cls: "wasm-image-progress" });
+        this.progressContainer.style.display = "none";
+        const progressBar = this.progressContainer.createDiv({ cls: "wasm-image-progress__bar" });
+        this.progressFill = progressBar.createDiv({ cls: "wasm-image-progress__fill" });
+        this.progressText = this.progressContainer.createDiv({ cls: "wasm-image-progress__text" });
+
+        const btnRow = bodyEl.createDiv({ cls: "wasm-image-modal__btn-row" });
         btnRow.style.justifyContent = "center";
-        this.convertBtn = document.createElement("button");
-        this.convertBtn.textContent = this.targetTFile ? "Convert" : "Convert & Insert";
-        this.convertBtn.className = "wasm-image-modal__btn mod-cta";
+        this.convertBtn = btnRow.createEl("button", { cls: "wasm-image-modal__btn mod-cta" });
         this.convertBtn.style.width = "100%";
         this.convertBtn.style.justifyContent = "center";
-        this.convertBtn.disabled = true;
         this.convertBtn.addEventListener("click", () => this.runConversion());
-        btnRow.appendChild(this.convertBtn);
-        contentEl.appendChild(btnRow);
+        this.updateConvertButton();
 
-        // Initialize with file if provided
+        this.updateExample();
+
         if (this.initialFile) {
             this.handleFilesSelect([this.initialFile]);
             this.dropZone.showPreview(this.initialFile);
-        }
-
-        // Auto read clipboard (only if no initial file)
-        if (this.settings.autoReadClipboard && !this.initialFile) {
+        } else if (this.settings.autoReadClipboard) {
             this.autoReadClipboard();
         }
     }
 
-    onClose() {
+    /** The host closed: stop or deliver, and release what the body holds. */
+    dispose() {
         this.closedFlag = true;
-        this.releasePredictionSource();
         this.dropZone?.dispose();
-        this.contentEl.empty();
         if (this.converting) {
-            // The conversion loop notices this, stops after the current file
-            // and delivers the links converted so far.
+            // The conversion notices this, stops after the current file,
+            // releases the decode and delivers the links converted so far.
             this.cancelRequested = true;
         } else {
+            this.releaseDecodeSource();
             this.deliver(this.result);
         }
     }
 
+    private createSourceButton(row: HTMLElement, icon: string, text: string, onClick: () => void): HTMLButtonElement {
+        const btn = row.createEl("button", { cls: "wasm-image-modal__btn wasm-image-drop-zone__btn" });
+        btn.style.flex = "1";
+        btn.onclick = onClick;
+        setIcon(btn.createSpan({ cls: "wasm-image-modal__btn-icon" }), icon);
+        btn.createSpan({ text });
+        return btn;
+    }
+
+    /**
+     * Initial values: the replaced file's own name and folder, or the name
+     * template and the folder the save destination resolves to.
+     */
+    private createSaveFields(): SaveFields {
+        const onChange = () => this.updateExample();
+        if (this.target) {
+            return new SaveFields(this.app, this.target.basename, displayFolder(this.target.parent?.path ?? ""), "", onChange);
+        }
+        const save = this.settings.save;
+        let folder: string;
+        if (save.destination.mode === "folder") {
+            folder = displayFolder(save.destination.folder);
+        } else {
+            const resolved = attachmentFolder(this.app, this.sourcePath);
+            folder = resolved === null ? "" : displayFolder(resolved);
+        }
+        return new SaveFields(this.app, save.nameTemplate, folder, "Obsidian's attachment folder", onChange);
+    }
+
     private setInputsDisabled(disabled: boolean) {
-        this.pasteBtn.disabled = disabled;
-        this.importBtn.disabled = disabled;
+        if (this.pasteBtn) this.pasteBtn.disabled = disabled;
+        if (this.importBtn) this.importBtn.disabled = disabled;
         this.convertBtn.disabled = disabled;
+        this.saveFields.setDisabled(disabled);
         if (!this.initialFile) {
             this.dropZone.setDisabled(disabled);
         }
@@ -228,31 +220,64 @@ class ImageConverterModal extends Modal {
         }
 
         this.selectedFiles = validFiles;
+        this.predictedSize = null;
         this.updateConvertButton();
         this.updatePrediction();
     }
 
     private updateConvertButton() {
-        if (this.selectedFiles.length === 0) {
-            this.convertBtn.disabled = true;
-            this.convertBtn.textContent = this.targetTFile ? "Convert" : "Convert & Insert";
-        } else if (this.targetTFile) {
-            this.convertBtn.disabled = false;
+        const count = this.selectedFiles.length;
+        this.convertBtn.disabled = count === 0;
+        if (this.target) {
             this.convertBtn.textContent = "Convert";
-        } else if (this.selectedFiles.length === 1) {
-            this.convertBtn.disabled = false;
-            this.convertBtn.textContent = "Convert & Insert";
+        } else if (count > 1) {
+            this.convertBtn.textContent = `Convert & Insert (${count} images)`;
         } else {
-            this.convertBtn.disabled = false;
-            this.convertBtn.textContent = `Convert & Insert (${this.selectedFiles.length} images)`;
+            this.convertBtn.textContent = "Convert & Insert";
         }
+    }
+
+    /**
+     * Base name of a converted file. The replaced file keeps its own unless
+     * the name field was changed; otherwise the field is a name template.
+     */
+    private basenameFor(originalName: string | undefined, sizeBytes: number, date = new Date()): string {
+        const fields = this.saveFields.values();
+        let template: string;
+        if (this.target) {
+            const plan = planReplacement(fields, { folder: this.targetFolder() });
+            if (plan?.nameTemplate == null) return this.target.basename;
+            template = plan.nameTemplate;
+        } else {
+            template = planNewFile(fields, this.settings.save).nameTemplate;
+        }
+        return resolveName(template, { original: originalName, note: this.sourcePath || undefined, date, sizeBytes }, formatDateWithMoment);
+    }
+
+    private targetFolder(): string {
+        return canonicalFolder(this.target?.parent?.path ?? "") ?? "";
+    }
+
+    /**
+     * The expanded name under the name field. {size} uses the size
+     * prediction when there is one, else the source size, else a sample
+     * value; the date is now. Saving expands the name again with the real size.
+     */
+    private updateExample() {
+        const extension = encoderFor(this.settingsPanel.getEncode().format).extension;
+        const file = this.selectedFiles[0];
+        const size = this.predictedSize ?? file?.size ?? EXAMPLE_SIZE;
+        const name = `${this.basenameFor(file?.name ?? "image.png", size)}.${extension}`;
+        const more = this.selectedFiles.length > 1 ? `, and likewise for the other ${this.selectedFiles.length - 1}` : "";
+        this.saveFields.setExample(`Example: ${name}${more}`);
     }
 
     private async updatePrediction() {
         const generation = ++this.predictionGeneration;
+        this.updateExample();
 
         if (this.selectedFiles.length !== 1) {
-            this.releasePredictionSource();
+            this.releaseDecodeSource();
             if (this.selectedFiles.length === 0) {
                 this.infoDiv.textContent = "";
             } else {
@@ -265,7 +290,7 @@ class ImageConverterModal extends Modal {
         const file = this.selectedFiles[0];
         const encode = this.settingsPanel.getEncode();
 
-        const source = await this.loadPredictionSource(file);
+        const source = await this.loadDecodeSource(file);
         if (generation !== this.predictionGeneration) return;
         if (!source) {
             this.renderPredictionLine(file, null, false);
@@ -302,37 +327,46 @@ class ImageConverterModal extends Modal {
     }
 
     /** Decodes `file` once; later calls for the same file share the result. */
-    private loadPredictionSource(file: File): PredictionSource["ready"] {
-        if (this.predictionSource?.file === file) return this.predictionSource.ready;
-        this.releasePredictionSource();
+    private loadDecodeSource(file: File): DecodeSource["ready"] {
+        if (this.decodeSource?.file === file) return this.decodeSource.ready;
+        this.releaseDecodeSource();
 
-        const source: PredictionSource = {
+        const source: DecodeSource = {
             file,
             ready: decode(file).then(
                 decoded => {
-                    if (this.predictionSource !== source) {
-                        // Released (other selection, modal closed) while decoding
+                    if (this.decodeSource !== source) {
+                        // Released (other selection, window closed) while decoding
                         decoded.close();
                         return null;
                     }
                     return { decoded, stats: analyze(decoded) };
                 },
                 error => {
-                    console.warn("Failed to decode image for size prediction:", error);
+                    console.warn("Failed to decode image:", error);
                     return null;
                 }
             ),
         };
-        this.predictionSource = source;
+        this.decodeSource = source;
         return source.ready;
     }
 
-    /** Closes the decoded image of the current prediction source. */
-    private releasePredictionSource() {
-        const source = this.predictionSource;
+    /** Closes the decoded image of the current source. */
+    private releaseDecodeSource() {
+        const source = this.decodeSource;
         if (!source) return;
-        this.predictionSource = null;
+        this.decodeSource = null;
         source.ready.then(result => result?.decoded.close());
+    }
+
+    /** Converts with the decode the prediction holds when it is of `file`; decodes anew otherwise. */
+    private async convertFile(file: File, encode: EncodeSettings): Promise<Blob> {
+        if (this.decodeSource?.file === file) {
+            const source = await this.decodeSource.ready;
+            if (source) return convert(source.decoded, encode);
+        }
+        return convertBlob(file, encode);
     }
 
     /**
@@ -358,6 +392,8 @@ class ImageConverterModal extends Modal {
                 spinner.className = 'wasm-image-prediction-spinner';
                 this.infoDiv.appendChild(spinner);
             }
+            this.predictedSize = prediction.predictedSize;
+            this.updateExample();
         }
     }
 
@@ -369,8 +405,8 @@ class ImageConverterModal extends Modal {
         try {
             const encode = this.settingsPanel.getEncode();
 
-            if (this.targetTFile) {
-                await this.runReplaceConversion(encode);
+            if (this.target) {
+                await this.runReplaceConversion(this.target, encode);
             } else {
                 await this.runInsertConversion(encode);
             }
@@ -385,16 +421,26 @@ class ImageConverterModal extends Modal {
                 this.updateConvertButton();
                 this.progressContainer.style.display = "none";
             }
+        } finally {
+            // dispose() left the decode alone while the conversion used it
+            if (this.closedFlag) this.releaseDecodeSource();
         }
     }
 
-    /** Replace mode (context menu) - single file, overwrites targetTFile. */
-    private async runReplaceConversion(encode: EncodeSettings) {
+    /**
+     * Replace mode (file menu): overwrites the target. Unchanged fields keep
+     * its name and folder; edited ones move or rename it.
+     */
+    private async runReplaceConversion(target: TFile, encode: EncodeSettings) {
         const file = this.selectedFiles[0];
         this.convertBtn.textContent = "Converting...";
 
-        const blob = await convertBlob(file, encode);
-        const result = await replaceExisting(this.app, this.targetTFile!, blob, encoderFor(encode.format).extension);
+        const blob = await this.convertFile(file, encode);
+        const plan = planReplacement(this.saveFields.values(), { folder: this.targetFolder() });
+        const destination: ReplaceTarget | undefined = plan
+            ? { folder: plan.folder, basename: this.basenameFor(target.name, blob.size) }
+            : undefined;
+        const result = await replaceExisting(this.app, target, blob, encoderFor(encode.format).extension, destination);
 
         const originalKB = (result.originalSize / 1024).toFixed(2);
         const convertedKB = (result.convertedSize / 1024).toFixed(2);
@@ -404,17 +450,18 @@ class ImageConverterModal extends Modal {
         this.converting = false;
         this.result = embedLink(this.app, result.file, this.sourcePath);
         if (this.cancelRequested) {
-            // Modal already closed mid-conversion; the file was replaced
-            // anyway, so hand the link back to the caller.
+            // Closed mid-conversion; the file was replaced anyway, so hand
+            // the link back to the caller.
             this.deliver(this.result);
         } else {
-            this.close();
+            this.host.close();
         }
     }
 
-    /** Insert mode - converts each selected file into a new file. */
+    /** Insert mode: converts each selected file into a new file. */
     private async runInsertConversion(encode: EncodeSettings) {
         const extension = encoderFor(encode.format).extension;
+        const plan = planNewFile(this.saveFields.values(), this.settings.save);
         const links: string[] = [];
         const errors: string[] = [];
         let totalOriginalSize = 0;
@@ -426,7 +473,7 @@ class ImageConverterModal extends Modal {
         }
 
         for (let i = 0; i < this.selectedFiles.length; i++) {
-            // User closed the modal: stop before starting the next file
+            // Closed by the user: stop before starting the next file
             if (this.cancelRequested) break;
 
             const file = this.selectedFiles[i];
@@ -438,9 +485,9 @@ class ImageConverterModal extends Modal {
             }
 
             try {
-                const blob = await convertBlob(file, encode);
+                const blob = await this.convertFile(file, encode);
                 const saved = await saveNew(this.app, blob, extension, {
-                    ...this.settings.save,
+                    ...plan,
                     sourcePath: this.sourcePath,
                     originalName: file.name,
                 });
@@ -460,7 +507,7 @@ class ImageConverterModal extends Modal {
             // Deliver whatever finished before the cancel; already-written
             // files stay in the vault and their links still get inserted.
             new Notice(`⚠️ Conversion cancelled: ${links.length}/${total} images converted`);
-            this.deliver(links.length > 0 ? links.join("\n") : undefined);
+            this.deliver(links.length > 0 ? joinLinks(links) : undefined);
             return;
         }
 
@@ -485,8 +532,8 @@ class ImageConverterModal extends Modal {
                 new Notice(`❌ Failed to convert: ${errors.join(", ")}`);
             }
 
-            this.result = links.join("\n");
-            this.close();
+            this.result = joinLinks(links);
+            this.host.close();
         } else {
             new Notice("❌ All conversions failed");
             this.setInputsDisabled(false);
@@ -497,14 +544,11 @@ class ImageConverterModal extends Modal {
 
     private async autoReadClipboard() {
         try {
-            // @ts-ignore
             const items = await navigator.clipboard.read();
             if (this.closedFlag) return;
             for (const it of items) {
-                // @ts-ignore
                 for (const t of it.types) {
                     if (t.startsWith("image/")) {
-                        // @ts-ignore
                         const blob = await it.getType(t);
                         if (this.closedFlag) return;
                         const file = new File([blob], `clipboard-${Date.now()}.${t.split("/")[1]}`, { type: t });

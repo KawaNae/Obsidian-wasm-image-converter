@@ -68,9 +68,12 @@
     user-select: none;
 }
 
-.wasm-image-modal__folder-info {
+/* Name and folder fields */
+.wasm-image-save-fields__example {
+    margin: -6px 0 10px;
     font-size: 12px;
     color: var(--wimg-text-muted);
+    overflow-wrap: anywhere;
 }
 
 .wasm-image-modal__prediction-info {
@@ -418,4 +421,25 @@
 
 @keyframes wasm-image-spin {
     to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Batch convert
+   ========================================================================== */
+
+.wasm-image-batch-dialog__notes {
+    padding-left: 1.2em;
+    font-size: var(--wimg-font-ui-small);
+    color: var(--wimg-text-muted);
+}
+
+.wasm-image-batch-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: default;
+}
+
+.wasm-image-batch-progress .wasm-image-batch-progress__cancel {
+    align-self: flex-end;
 }

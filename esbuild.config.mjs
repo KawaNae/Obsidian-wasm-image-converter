@@ -200,6 +200,8 @@ const context = await esbuild.context({
   bundle: true,
   external: [
     "obsidian",
+    "@codemirror/view",
+    "@codemirror/state",
     ...builtins,
   ],
   format: "cjs",

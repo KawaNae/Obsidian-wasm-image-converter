@@ -94,6 +94,27 @@ export function builtinPresets(): Preset[] {
   return BUILTIN_PRESETS.map(clonePreset);
 }
 
+/** Whether two encodings give the same output. */
+export function encodeEquals(a: EncodeSettings, b: EncodeSettings): boolean {
+  return a.format === b.format
+    && a.quality === b.quality
+    && a.grayscale === b.grayscale
+    && a.resize.enabled === b.resize.enabled
+    && a.resize.maxWidth === b.resize.maxWidth
+    && a.resize.maxHeight === b.resize.maxHeight;
+}
+
+/** The factory encoding of a built-in preset; undefined for user presets. */
+export function builtinEncode(id: string): EncodeSettings | undefined {
+  const preset = BUILTIN_PRESETS.find(p => p.id === id);
+  return preset ? cloneEncode(preset.encode) : undefined;
+}
+
+/** Name of a preset as the dialogs show it, marked when its values were changed there. */
+export function presetLabel(name: string, modified: boolean): string {
+  return modified ? `${name} (modified)` : name;
+}
+
 /** Settings of a fresh install. Every call returns a new, unshared object. */
 export function createDefaultSettings(): PluginSettings {
   return {

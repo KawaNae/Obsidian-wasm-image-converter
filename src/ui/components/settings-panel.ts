@@ -1,11 +1,17 @@
-import { EncodeSettings, ImageFormat, Preset, cloneEncode, resolvePreset } from "../../settings";
+import { EncodeSettings, ImageFormat, Preset, cloneEncode, encodeEquals, presetLabel, resolvePreset } from "../../settings";
 import { ENCODER_LIST, encoderFor } from "../../conversion/encoders";
 
+/**
+ * The encoding inputs of the converter dialog. Choosing a preset loads its
+ * values; changing a value afterwards keeps the preset selected and marks it
+ * "(modified)" until the values equal the preset's again.
+ */
 export class SettingsPanel {
     element: HTMLDivElement;
     private presets: Preset[];
     private defaultPresetId: string;
-    private destinationLabel: string;
+    /** Preset whose values were loaded last */
+    private selectedPresetId: string;
     /** Working copy edited by the inputs; presets themselves are never mutated. */
     private encode: EncodeSettings;
     private onChange: () => void;
@@ -18,19 +24,17 @@ export class SettingsPanel {
     private maxWInput!: HTMLInputElement;
     private maxHInput!: HTMLInputElement;
     private grayscaleCheckbox!: HTMLInputElement;
-    private folderInfo!: HTMLDivElement;
 
     /**
      * @param presets - presets to choose from
      * @param defaultPresetId - preset selected initially
-     * @param destinationLabel - save destination shown below the settings
      */
-    constructor(presets: Preset[], defaultPresetId: string, destinationLabel: string, onChange: () => void) {
+    constructor(presets: Preset[], defaultPresetId: string, onChange: () => void) {
         this.presets = presets;
         const initial = resolvePreset({ presets, defaultPresetId }, defaultPresetId);
         this.defaultPresetId = initial?.id ?? defaultPresetId;
+        this.selectedPresetId = this.defaultPresetId;
         this.encode = cloneEncode(initial?.encode ?? presets[0].encode);
-        this.destinationLabel = destinationLabel;
         this.onChange = onChange;
         this.element = document.createElement("div");
         this.render();
@@ -57,7 +61,6 @@ export class SettingsPanel {
         this.formatSelect = this.createSelect("Converter:", (val) => {
             this.encode.format = val as ImageFormat;
             this.updateQualityState();
-            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
         ENCODER_LIST.forEach(encoder => {
@@ -71,7 +74,6 @@ export class SettingsPanel {
         // Quality (disabled for PNG since it's lossless)
         this.qualityInput = this.createNumberInput("Quality:", 0.1, 1.0, 0.1, this.encode.quality, (val) => {
             this.encode.quality = val;
-            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
         // Store the quality row for toggling visibility
@@ -80,14 +82,12 @@ export class SettingsPanel {
         // Grayscale
         this.grayscaleCheckbox = this.createCheckbox("Grayscale", this.encode.grayscale, (checked) => {
             this.encode.grayscale = checked;
-            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
 
         // Resize
         this.resizeCheckbox = this.createCheckbox("Resize", this.encode.resize.enabled, (checked) => {
             this.encode.resize.enabled = checked;
-            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
 
@@ -96,7 +96,6 @@ export class SettingsPanel {
             const clamped = Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
             this.maxWInput.value = String(clamped);
             this.encode.resize.maxWidth = clamped;
-            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
         this.maxWInput.placeholder = "1920";
@@ -106,16 +105,9 @@ export class SettingsPanel {
             const clamped = Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
             this.maxHInput.value = String(clamped);
             this.encode.resize.maxHeight = clamped;
-            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
         this.maxHInput.placeholder = "1080";
-
-        // Folder Info
-        this.folderInfo = document.createElement("div");
-        this.folderInfo.className = "wasm-image-modal__folder-info";
-        this.folderInfo.textContent = `Save to: ${this.destinationLabel}`;
-        this.element.appendChild(this.folderInfo);
 
         // Set initial quality state based on format
         this.updateQualityState();
@@ -203,7 +195,10 @@ export class SettingsPanel {
 
     private handlePresetChange(id: string) {
         const preset = this.presets.find(p => p.id === id);
-        if (preset) this.applyPreset(preset);
+        if (preset) {
+            this.selectedPresetId = preset.id;
+            this.applyPreset(preset);
+        }
         this.notifyChange();
     }
 
@@ -221,7 +216,24 @@ export class SettingsPanel {
     }
 
     private notifyChange() {
+        this.updatePresetLabels();
         this.onChange();
+    }
+
+    /** Whether the values differ from those of the selected preset. */
+    public isModified(): boolean {
+        const preset = this.presets.find(p => p.id === this.selectedPresetId);
+        return preset ? !encodeEquals(this.encode, preset.encode) : false;
+    }
+
+    /** Marks the selected preset "(modified)" while the values differ from it. */
+    private updatePresetLabels() {
+        for (const option of Array.from(this.presetSelect.options)) {
+            const preset = this.presets.find(p => p.id === option.value);
+            if (!preset) continue;
+            option.textContent = presetLabel(preset.name, preset.id === this.selectedPresetId && this.isModified());
+        }
+        this.presetSelect.value = this.selectedPresetId;
     }
 
     public getElement(): HTMLElement {
