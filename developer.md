@@ -175,14 +175,22 @@ src/
 │   └── wasm-loader.ts         # WASM の取得、検証、キャッシュ
 ├── save/                      # 保存の層（変換済みの Blob を受け取り、デコードや変換はしない）
 │   ├── name.ts                # 純粋: resolveName(template, context, formatDate)、禁止文字、区切りの詰め
-│   ├── paths.ts               # 純粋: 重複を避ける名前、置き換え後の名前、パスの結合
+│   ├── paths.ts               # 純粋: 重複を避ける名前（" 1"、" 2"）、置き換え後の名前、添付ファイルのフォルダ、パスの結合
 │   └── save.ts                # saveNew / replaceExisting / embedLink
-├── ui/                        # UI コンポーネント
-│   ├── image-converter-modal.ts
+├── entry/                     # 入口の層（変換の層と保存の層を呼ぶ）
+│   ├── auto-convert.ts        # ドロップとペーストの自動変換。リンクを選んだ順にまとめて挿入する
+│   ├── drop-position.ts       # 公開の API でドロップの位置を得る（EditorView.findFromDOM、posAtCoords）
+│   ├── batch-convert.ts       # 一括変換（vault 全体、フォルダ）、確認のダイアログ、進捗の Notice
+│   └── targets.ts             # 純粋: 対象の判定、リンクの連結、一括変換の対象と集計
+├── ui/                        # モーダル（右クリックメニューの置き換えのモードを含む）
+│   ├── image-converter-modal.ts # Modal の殻。中身は ConverterBody.build(bodyEl)
+│   ├── converter-body.ts      # モーダルの中身。予測のデコードを変換でも使う
+│   ├── save-plan.ts           # 純粋: 名前と保存先の欄から saveNew / replaceExisting の引数を決める
 │   └── components/
 │       ├── drop-zone.ts
-│       ├── preview-area.ts
-│       └── settings-panel.ts
+│       ├── folder-suggest.ts  # 保存先の欄のフォルダの候補
+│       ├── save-fields.ts     # 名前と保存先の欄、名前の見本
+│       └── settings-panel.ts  # 変換設定の欄。値を変えたプリセットに「(modified)」を付ける
 ├── utils/
 │   └── gif-check.ts
 └── styles/
