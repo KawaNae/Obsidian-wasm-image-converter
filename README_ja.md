@@ -21,7 +21,7 @@ Obsidian用の高速画像変換プラグインです。WebAssembly (WASM) を�
 - **品質調整**: 0.1 - 1.0 の範囲で圧縮品質を設定
 - **自動リサイズ**: 大きな画像を指定サイズに自動縮小
 - **グレースケール変換**: カラー画像を白黒に変換
-- **保存場所指定**: 変換後の画像保存先フォルダを設定
+- **保存場所指定**: Obsidian の添付ファイルの設定に従うか固定のフォルダにするかを選び、名前のテンプレートを設定
 
 ### 📋 便利な入力方法
 - **モーダルUI**: 詳細設定を行いながら変換
@@ -66,11 +66,13 @@ https://github.com/phibr0/obsidian-commander を利用して"WASM Image Converte
 - **Auto-read clipboard on startup**: 起動時にクリップボードを自動チェック
 - **Auto-convert on drag & drop**: ドラッグ&ドロップ時の自動変換機能
 - **Auto-convert preset**: 自動変換時に使用するプリセット
+- **Save location**: 保存先。Obsidian の添付ファイルの設定に従うか、固定のフォルダにするか
+- **File name**: 名前のテンプレート。変数は `{original}`、`{note}`、`{date:YYYYMMDD}`（moment の書式）、`{size}`（KB）。既定は `IMG-{date:YYYYMMDD[T]HHmmssSSS}-{size}`
+- 既存のファイルの変換（右クリックメニュー、一括変換）では、場所と名前を保ち、拡張子だけを変える
 
 ### プリセット設定
 各プリセットで以下の項目を設定:
 - **Converter**: 変換エンジン (現在はWASM WebPのみ)
-- **Attachment folder**: 保存先フォルダ
 - **Quality**: 圧縮品質 (0.1 - 1.0)
 - **Grayscale**: グレースケール変換
 - **Resize**: 自動リサイズ機能
@@ -122,7 +124,7 @@ src/
 ├── settings.ts                   # 設定インターフェースとデフォルト値
 ├── settings-tab.ts              # 設定UIコンポーネント
 ├── image-converter-modal.ts     # メインUI モーダル
-├── file-service.ts              # ファイル操作
+├── save/                        # 名前のテンプレート、新規保存、置き換え、埋め込みリンク
 └── conversion/                  # 一度のデコード、描画、エンコード、サイズ予測
     ├── decode.ts / render.ts    # デコードと、リサイズ・グレースケールを適用した RGBA
     ├── encoders.ts              # エンコーダの登録表（WebP, AVIF, JPEG, PNG）

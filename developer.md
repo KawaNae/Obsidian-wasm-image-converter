@@ -159,7 +159,6 @@ src/
 ├── settings.ts                # 設定型定義・デフォルト値
 ├── settings-tab.ts            # 設定タブ UI（タブベース）
 ├── globals.d.ts               # グローバル型宣言 (__BUILD_TIME__)
-├── file-service.ts            # ファイル操作サービス
 ├── conversion/                # 変換の層（Obsidian の保存や UI に依存しない）
 │   ├── decode.ts              # decode(blob): 一度だけデコードし、予測と変換で使い回す
 │   ├── render.ts              # render(decoded, encode, size?): リサイズとグレースケールを適用した RGBA
@@ -174,6 +173,10 @@ src/
 │   ├── grayscale.ts           # 純粋: グレースケール
 │   ├── wasm-assets.ts         # 純粋: 取得する WASM の版と SHA-256
 │   └── wasm-loader.ts         # WASM の取得、検証、キャッシュ
+├── save/                      # 保存の層（変換済みの Blob を受け取り、デコードや変換はしない）
+│   ├── name.ts                # 純粋: resolveName(template, context, formatDate)、禁止文字、区切りの詰め
+│   ├── paths.ts               # 純粋: 重複を避ける名前、置き換え後の名前、パスの結合
+│   └── save.ts                # saveNew / replaceExisting / embedLink
 ├── ui/                        # UI コンポーネント
 │   ├── image-converter-modal.ts
 │   └── components/

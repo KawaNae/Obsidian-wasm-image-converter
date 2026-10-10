@@ -21,7 +21,7 @@ A fast, efficient image conversion plugin for Obsidian that converts images to W
 - **Quality Adjustment**: Set compression quality from 0.1 to 1.0
 - **Auto-Resize**: Automatically downsize large images to specified dimensions
 - **Grayscale Conversion**: Convert color images to black and white
-- **Save Location**: Configure destination folder for converted images
+- **Save Location**: Follow Obsidian's attachment setting or use a fixed folder, with a file name template
 
 ### 📋 Convenient Input Methods
 - **Modal UI**: Convert with detailed settings configuration
@@ -70,11 +70,13 @@ We recommend using [Obsidian Commander](https://github.com/phibr0/obsidian-comma
 - **Auto-read clipboard on startup**: Automatically check clipboard on startup
 - **Auto-convert on drag & drop**: Enable auto-conversion for drag & drop
 - **Auto-convert preset**: Preset to use for auto-conversion
+- **Save location**: Follow Obsidian's attachment setting, or a fixed folder
+- **File name**: Name template with `{original}`, `{note}`, `{date:YYYYMMDD}` (moment format) and `{size}` (KB). Default `IMG-{date:YYYYMMDD[T]HHmmssSSS}-{size}`
+- Converting an existing file (file menu, batch convert) keeps its folder and name and only changes the extension
 
 ### Preset Configuration
 Configure the following for each preset:
 - **Converter**: Conversion engine (currently WASM WebP only)
-- **Attachment folder**: Destination folder
 - **Quality**: Compression quality (0.1 - 1.0)
 - **Grayscale**: Grayscale conversion
 - **Resize**: Auto-resize functionality
@@ -128,7 +130,7 @@ src/
 ├── settings.ts                   # Settings interface and defaults
 ├── settings-tab.ts              # Settings UI component
 ├── image-converter-modal.ts     # Main UI modal
-├── file-service.ts              # File operations
+├── save/                        # Name template, saveNew, replaceExisting, embed links
 └── conversion/                  # Decode once, render, encode, predict size
     ├── decode.ts / render.ts    # Decoding and resize/grayscale to RGBA
     ├── encoders.ts              # Encoder registry (WebP, AVIF, JPEG, PNG)
