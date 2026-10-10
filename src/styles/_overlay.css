@@ -129,8 +129,9 @@
     text-align: center;
 }
 
+/* Obsidian mobile gives the inset as a variable; env() is 0 in its WebView on Android */
 .is-phone .wasm-image-overlay__body {
-    padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 0 16px calc(16px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
 /* ----- Closing ----- */
