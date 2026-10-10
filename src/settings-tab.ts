@@ -1,6 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting, Modal } from "obsidian";
 import WasmImageConverterPlugin from "./main";
-import { PresetSettings, DEFAULT_PRESETS, ConverterType, CONVERTER_OPTIONS } from "./settings";
+import { Preset, FORMAT_OPTIONS, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, builtinPresets, createPresetId, getFormatLabel, repairPresetRefs } from "./settings";
 
 export class WasmImageConverterSettingTab extends PluginSettingTab {
   plugin: WasmImageConverterPlugin;
@@ -110,18 +110,29 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
       .setDesc("Which preset to use for automatic conversion on drag & drop")
       .addDropdown(dropdown => {
         this.plugin.settings.presets.forEach((preset) => {
-          dropdown.addOption(preset.name, preset.name);
+          dropdown.addOption(preset.id, preset.name);
         });
 
-        const currentPreset = this.plugin.settings.autoConvertPreset;
-        const presetExists = this.plugin.settings.presets.some(p => p.name === currentPreset);
-        dropdown.setValue(presetExists ? currentPreset : "Default");
+        const currentId = this.plugin.settings.autoConvertPresetId;
+        const presetExists = this.plugin.settings.presets.some(p => p.id === currentId);
+        dropdown.setValue(presetExists ? currentId : this.plugin.settings.defaultPresetId);
 
         dropdown.onChange(async (value) => {
-          this.plugin.settings.autoConvertPreset = value;
+          this.plugin.settings.autoConvertPresetId = value;
           await this.plugin.saveSettings();
         });
       });
+
+    new Setting(el)
+      .setName("Save folder")
+      .setDesc("Folder where converted images are saved")
+      .addText(text => text
+        .setPlaceholder(DEFAULT_FOLDER)
+        .setValue(this.plugin.settings.save.destination.folder)
+        .onChange(async (value) => {
+          this.plugin.settings.save.destination.folder = value || DEFAULT_FOLDER;
+          await this.plugin.saveSettings();
+        }));
 
     el.createEl("h4", { text: "Batch or Auto convert target extensions" });
 
@@ -195,7 +206,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
   private renderPresetsTab(el: HTMLElement): void {
     const presetsDesc = el.createEl("div", {
       cls: "setting-item-description",
-      text: "Manage conversion presets that include: Attachment folder, Quality, Grayscale, Resize settings, and Maximum dimensions."
+      text: "Manage conversion presets that include: Output format, Quality, Grayscale, Resize settings, and Maximum dimensions."
     });
     presetsDesc.style.marginBottom = "15px";
 
@@ -217,16 +228,15 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
     }
 
     this.plugin.settings.presets.forEach((preset, index) => {
-      const isBuiltin = preset.isBuiltin === true;
-      const converterLabel = CONVERTER_OPTIONS.find(opt => opt.value === preset.converterType)?.label || preset.converterType;
+      const isBuiltin = preset.builtin;
+      const { format, quality, resize, grayscale } = preset.encode;
 
       new Setting(el)
         .setName(preset.name)
-        .setDesc(`Converter: ${converterLabel}, ` +
-          `Quality: ${(preset.quality * 100).toFixed(0)}%, ` +
-          `${preset.enableResize ? `Max: ${preset.maxWidth}x${preset.maxHeight}` : "No resize"}, ` +
-          `${preset.enableGrayscale ? "Grayscale" : "Color"}, ` +
-          `Folder: "${preset.attachmentFolder}"`)
+        .setDesc(`Converter: ${getFormatLabel(format)}, ` +
+          `Quality: ${(quality * 100).toFixed(0)}%, ` +
+          `${resize.enabled ? `Max: ${resize.maxWidth}x${resize.maxHeight}` : "No resize"}, ` +
+          `${grayscale ? "Grayscale" : "Color"}`)
         .addButton(button => button
           .setButtonText("Edit")
           .onClick(() => {
@@ -237,6 +247,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
           .setDisabled(isBuiltin)
           .onClick(async () => {
             this.plugin.settings.presets.splice(index, 1);
+            repairPresetRefs(this.plugin.settings);
             await this.plugin.saveSettings();
             this.display();
           }));
@@ -260,7 +271,8 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
         .onClick(async () => {
           const confirmed = await this.showResetConfirmation();
           if (confirmed) {
-            this.plugin.settings.presets = [...DEFAULT_PRESETS];
+            this.plugin.settings.presets = builtinPresets();
+            repairPresetRefs(this.plugin.settings);
             await this.plugin.saveSettings();
             this.display();
           }
@@ -346,11 +358,11 @@ class ConfirmationModal extends Modal {
 
 class PresetEditModal extends Modal {
   plugin: WasmImageConverterPlugin;
-  preset: PresetSettings | null;
+  preset: Preset | null;
   onSave: () => void;
   isEditing: boolean;
 
-  constructor(app: App, plugin: WasmImageConverterPlugin, preset: PresetSettings | null, onSave: () => void) {
+  constructor(app: App, plugin: WasmImageConverterPlugin, preset: Preset | null, onSave: () => void) {
     super(app);
     this.plugin = plugin;
     this.preset = preset;
@@ -365,15 +377,15 @@ class PresetEditModal extends Modal {
     contentEl.createEl("h2", { text: this.isEditing ? "Edit Preset" : "Create Preset" });
 
     let presetName = this.preset?.name || "";
-    let converterType = this.preset?.converterType || ConverterType.WASM_WEBP;
-    let quality = this.preset?.quality || 0.8;
-    let maxWidth = this.preset?.maxWidth || 1920;
-    let maxHeight = this.preset?.maxHeight || 1080;
-    let enableResize: boolean = this.preset?.enableResize ?? true;
-    let enableGrayscale: boolean = this.preset?.enableGrayscale ?? false;
-    let attachmentFolder = this.preset?.attachmentFolder || "Attachments";
+    const initial = this.preset?.encode ?? DEFAULT_ENCODE;
+    let format: ImageFormat = initial.format;
+    let quality = initial.quality;
+    let maxWidth = initial.resize.maxWidth;
+    let maxHeight = initial.resize.maxHeight;
+    let enableResize: boolean = initial.resize.enabled;
+    let enableGrayscale: boolean = initial.grayscale;
 
-    const isBuiltin = this.preset?.isBuiltin === true;
+    const isBuiltin = this.preset?.builtin === true;
 
     new Setting(contentEl)
       .setName("Preset Name")
@@ -390,24 +402,14 @@ class PresetEditModal extends Modal {
       .setName("Converter")
       .setDesc("Select the image converter to use")
       .addDropdown(dropdown => {
-        CONVERTER_OPTIONS.forEach(option => {
+        FORMAT_OPTIONS.forEach(option => {
           dropdown.addOption(option.value, option.label);
         });
-        dropdown.setValue(converterType);
+        dropdown.setValue(format);
         dropdown.onChange((value) => {
-          converterType = value as ConverterType;
+          format = value as ImageFormat;
         });
       });
-
-    new Setting(contentEl)
-      .setName("Attachment folder")
-      .setDesc("Folder where converted images will be saved")
-      .addText(text => text
-        .setPlaceholder("Attachments")
-        .setValue(attachmentFolder)
-        .onChange((value) => {
-          attachmentFolder = value || "Attachments";
-        }));
 
     new Setting(contentEl)
       .setName("Quality")
@@ -489,16 +491,16 @@ class PresetEditModal extends Modal {
             return;
           }
 
-          const updatedPreset: PresetSettings = {
+          const updatedPreset: Preset = {
+            id: this.preset?.id ?? createPresetId(),
             name: trimmedName,
-            converterType,
-            quality,
-            maxWidth,
-            maxHeight,
-            enableResize,
-            enableGrayscale,
-            attachmentFolder,
-            isBuiltin: this.preset?.isBuiltin,
+            builtin: this.preset?.builtin ?? false,
+            encode: {
+              format,
+              quality,
+              resize: { enabled: enableResize, maxWidth, maxHeight },
+              grayscale: enableGrayscale,
+            },
           };
 
           if (this.isEditing && this.preset) {

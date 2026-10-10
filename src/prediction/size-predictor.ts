@@ -1,4 +1,4 @@
-import { ConverterType } from "../settings";
+import { EncodeSettings, ImageFormat } from "../settings";
 
 export interface SizePredictionResult {
   predictedSize: number; // bytes
@@ -6,26 +6,17 @@ export interface SizePredictionResult {
   method: string; // prediction method used
 }
 
-export interface SizePredictionOptions {
-  converterType: ConverterType;
-  quality: number;
-  enableGrayscale: boolean;
-  enableResize: boolean;
-  maxWidth: number;
-  maxHeight: number;
-}
-
 export interface SizePredictor {
   predict(
     originalFile: File, 
-    options: SizePredictionOptions
+    options: EncodeSettings
   ): Promise<SizePredictionResult>;
   
-  supportedType: ConverterType;
+  supportedType: ImageFormat;
 }
 
 export class SizePredictionService {
-  private predictors: Map<ConverterType, SizePredictor> = new Map();
+  private predictors: Map<ImageFormat, SizePredictor> = new Map();
 
   registerPredictor(predictor: SizePredictor) {
     this.predictors.set(predictor.supportedType, predictor);
@@ -33,9 +24,9 @@ export class SizePredictionService {
 
   async predictSize(
     originalFile: File,
-    options: SizePredictionOptions
+    options: EncodeSettings
   ): Promise<SizePredictionResult | null> {
-    const predictor = this.predictors.get(options.converterType);
+    const predictor = this.predictors.get(options.format);
     if (!predictor) {
       return null;
     }
@@ -48,7 +39,7 @@ export class SizePredictionService {
     }
   }
 
-  getSupportedTypes(): ConverterType[] {
+  getSupportedTypes(): ImageFormat[] {
     return Array.from(this.predictors.keys());
   }
 }

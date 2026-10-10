@@ -1,34 +1,22 @@
-import { ConverterType } from "../settings";
-import { SizePredictionOptions, SizePredictionResult } from "./size-predictor";
-import { convertImageToWebP, ImageProcessingOptions } from "../converters/webp-converter";
-import { convertImageWithCanvas } from "../converters/canvas-converter";
-import { convertImageToAVIF } from "../converters/avif-converter";
+import { EncodeSettings, ImageFormat } from "../settings";
+import { SizePredictionResult } from "./size-predictor";
+import { encodeImage } from "../converters/encode";
 
 // Pixel exponent of the power-law extrapolation, per format
 // (docs/size-prediction-experiment-2026-07-10.md)
-const ALPHA: Record<string, number> = {
-  [ConverterType.WASM_WEBP]: 0.75,
-  [ConverterType.CANVAS_JPEG]: 0.8,
-  [ConverterType.CANVAS_PNG]: 0.75,
-  [ConverterType.WASM_AVIF]: 0.65,
+const ALPHA: Record<ImageFormat, number> = {
+  webp: 0.75,
+  jpeg: 0.8,
+  png: 0.75,
+  avif: 0.65,
 };
 
 /**
  * AVIF encoding is much slower than the others; a smaller sample keeps the
  * dialog responsive even on weak hardware (~0.7s at 6x CPU throttling).
  */
-function sampleEdge(type: ConverterType): number {
-  return type === ConverterType.WASM_AVIF ? 200 : 400;
-}
-
-async function encode(type: ConverterType, file: File, opts: ImageProcessingOptions): Promise<Blob> {
-  switch (type) {
-    case ConverterType.CANVAS_PNG: return convertImageWithCanvas(file, "image/png", opts);
-    case ConverterType.CANVAS_JPEG: return convertImageWithCanvas(file, "image/jpeg", opts);
-    case ConverterType.WASM_AVIF: return convertImageToAVIF(file, opts);
-    case ConverterType.WASM_WEBP:
-    default: return convertImageToWebP(file, opts);
-  }
+function sampleEdge(format: ImageFormat): number {
+  return format === "avif" ? 200 : 400;
 }
 
 /**
@@ -38,7 +26,7 @@ async function encode(type: ConverterType, file: File, opts: ImageProcessingOpti
  */
 export async function predictBySampleEncode(
   file: File,
-  options: SizePredictionOptions
+  options: EncodeSettings
 ): Promise<SizePredictionResult | null> {
   try {
     const bmp = await createImageBitmap(file);
@@ -46,37 +34,28 @@ export async function predictBySampleEncode(
     bmp.close();
 
     // Dimensions the real conversion would produce
-    const targetScale = options.enableResize
-      ? Math.min(1, options.maxWidth / width, options.maxHeight / height)
+    const targetScale = options.resize.enabled
+      ? Math.min(1, options.resize.maxWidth / width, options.resize.maxHeight / height)
       : 1;
     const targetPx = Math.max(1, Math.round(width * targetScale))
       * Math.max(1, Math.round(height * targetScale));
 
-    const edge = sampleEdge(options.converterType);
+    const edge = sampleEdge(options.format);
     const sampleScale = Math.min(1, edge / width, edge / height);
     const samplePx = Math.max(1, Math.round(width * sampleScale))
       * Math.max(1, Math.round(height * sampleScale));
 
-    const base = { quality: options.quality, enableGrayscale: options.enableGrayscale };
-
     if (targetPx <= samplePx) {
       // Output is no bigger than the sample: encode at the real output size
-      const blob = await encode(options.converterType, file, {
-        ...base,
-        enableResize: options.enableResize,
-        maxWidth: options.maxWidth,
-        maxHeight: options.maxHeight,
-      });
+      const { blob } = await encodeImage(file, options);
       return { predictedSize: blob.size, confidence: 1, method: "sample-encode-exact" };
     }
 
-    const blob = await encode(options.converterType, file, {
-      ...base,
-      enableResize: true,
-      maxWidth: edge,
-      maxHeight: edge,
+    const { blob } = await encodeImage(file, {
+      ...options,
+      resize: { enabled: true, maxWidth: edge, maxHeight: edge },
     });
-    const alpha = ALPHA[options.converterType] ?? 0.75;
+    const alpha = ALPHA[options.format];
     const predictedSize = Math.round(blob.size * Math.pow(targetPx / samplePx, alpha));
     return { predictedSize, confidence: 0.9, method: "sample-encode" };
   } catch (e) {

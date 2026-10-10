@@ -1,13 +1,13 @@
-import { ConverterType } from "../settings";
-import { SizePredictor, SizePredictionResult, SizePredictionOptions } from "./size-predictor";
+import { EncodeSettings, ImageFormat } from "../settings";
+import { SizePredictor, SizePredictionResult } from "./size-predictor";
 
 /**
  * Base class for Canvas API-based format predictors.
  * Shares image analysis logic with WebPSizePredictor but uses format-specific formulas.
  */
 abstract class CanvasSizePredictor implements SizePredictor {
-  abstract supportedType: ConverterType;
-  abstract predict(originalFile: File, options: SizePredictionOptions): Promise<SizePredictionResult>;
+  abstract supportedType: ImageFormat;
+  abstract predict(originalFile: File, options: EncodeSettings): Promise<SizePredictionResult>;
 
   protected async analyzeImage(file: File): Promise<{
     width: number;
@@ -68,18 +68,18 @@ abstract class CanvasSizePredictor implements SizePredictor {
   protected calculateEffectiveDimensions(
     originalWidth: number,
     originalHeight: number,
-    options: SizePredictionOptions
+    options: EncodeSettings
   ): { width: number; height: number } {
-    if (!options.enableResize) {
+    if (!options.resize.enabled) {
       return { width: originalWidth, height: originalHeight };
     }
 
-    if (originalWidth <= options.maxWidth && originalHeight <= options.maxHeight) {
+    if (originalWidth <= options.resize.maxWidth && originalHeight <= options.resize.maxHeight) {
       return { width: originalWidth, height: originalHeight };
     }
 
-    const scaleByWidth = options.maxWidth / originalWidth;
-    const scaleByHeight = options.maxHeight / originalHeight;
+    const scaleByWidth = options.resize.maxWidth / originalWidth;
+    const scaleByHeight = options.resize.maxHeight / originalHeight;
     const scale = Math.min(scaleByWidth, scaleByHeight);
 
     return {
@@ -94,9 +94,9 @@ abstract class CanvasSizePredictor implements SizePredictor {
  * Typically ~30% larger than WebP at the same visual quality.
  */
 export class JPEGSizePredictor extends CanvasSizePredictor {
-  supportedType = ConverterType.CANVAS_JPEG;
+  supportedType: ImageFormat = "jpeg";
 
-  async predict(originalFile: File, options: SizePredictionOptions): Promise<SizePredictionResult> {
+  async predict(originalFile: File, options: EncodeSettings): Promise<SizePredictionResult> {
     const imageData = await this.analyzeImage(originalFile);
     const dims = this.calculateEffectiveDimensions(imageData.width, imageData.height, options);
 
@@ -106,7 +106,7 @@ export class JPEGSizePredictor extends CanvasSizePredictor {
     const pixels = dims.width * dims.height;
     const contentFactor = 3.0 * Math.pow(imageData.complexity, 0.42);
     const qualityFactor = Math.pow(options.quality / 0.8, 0.7);
-    const grayFactor = options.enableGrayscale ? 0.7 : 1;
+    const grayFactor = options.grayscale ? 0.7 : 1;
     const predictedSize = Math.round(Math.pow(pixels, 0.8) * contentFactor * qualityFactor * grayFactor);
 
     let confidence = 0.65;
@@ -130,9 +130,9 @@ export class JPEGSizePredictor extends CanvasSizePredictor {
  * AVIF size predictor. AVIF is lossy (by default), ~20% more efficient than WebP.
  */
 export class AVIFSizePredictor extends CanvasSizePredictor {
-  supportedType = ConverterType.WASM_AVIF;
+  supportedType: ImageFormat = "avif";
 
-  async predict(originalFile: File, options: SizePredictionOptions): Promise<SizePredictionResult> {
+  async predict(originalFile: File, options: EncodeSettings): Promise<SizePredictionResult> {
     const imageData = await this.analyzeImage(originalFile);
     const dims = this.calculateEffectiveDimensions(imageData.width, imageData.height, options);
 
@@ -143,7 +143,7 @@ export class AVIFSizePredictor extends CanvasSizePredictor {
     const pixels = dims.width * dims.height;
     const contentFactor = 18.3 * Math.pow(imageData.complexity, 0.76);
     const qualityFactor = Math.pow(options.quality / 0.75, 0.8);
-    const grayFactor = options.enableGrayscale ? 0.7 : 1;
+    const grayFactor = options.grayscale ? 0.7 : 1;
     const predictedSize = Math.round(Math.pow(pixels, 0.65) * contentFactor * qualityFactor * grayFactor);
 
     let confidence = 0.55;
@@ -168,9 +168,9 @@ export class AVIFSizePredictor extends CanvasSizePredictor {
  * Size depends mainly on image dimensions, color depth, and how compressible the data is.
  */
 export class PNGSizePredictor extends CanvasSizePredictor {
-  supportedType = ConverterType.CANVAS_PNG;
+  supportedType: ImageFormat = "png";
 
-  async predict(originalFile: File, options: SizePredictionOptions): Promise<SizePredictionResult> {
+  async predict(originalFile: File, options: EncodeSettings): Promise<SizePredictionResult> {
     const imageData = await this.analyzeImage(originalFile);
     const dims = this.calculateEffectiveDimensions(imageData.width, imageData.height, options);
 
@@ -182,7 +182,7 @@ export class PNGSizePredictor extends CanvasSizePredictor {
     // (docs/size-prediction-experiment-2026-07-10.md)
     const pixels = dims.width * dims.height;
     const contentFactor = 302 * Math.pow(imageData.complexity, 1.7);
-    const grayFactor = options.enableGrayscale ? 0.7 : 1;
+    const grayFactor = options.grayscale ? 0.7 : 1;
     const predictedSize = Math.round(Math.max(
       Math.pow(pixels, 0.75) * contentFactor * grayFactor,
       pixels * 0.02

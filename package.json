@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "vitest run"
   },
   "keywords": [
     "obsidian",
@@ -27,7 +28,8 @@
     "builtin-modules": "^5.0.0",
     "esbuild": "^0.23.0",
     "obsidian": "latest",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.7"
   },
   "dependencies": {
     "@jsquash/avif": "2.1.1",

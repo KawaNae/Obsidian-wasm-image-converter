@@ -1,16 +1,17 @@
 import { Notice, Plugin, Editor, Platform, MarkdownView, TFile, Modal, normalizePath } from "obsidian";
-import { ConverterSettings, ConverterType, DEFAULT_SETTINGS, DEFAULT_PRESETS, getExtensionForConverter } from "./settings";
+import { PluginSettings, Preset, createDefaultSettings, getExtensionForFormat, resolvePreset } from "./settings";
+import { migrateSettings } from "./settings-migration";
 import { openImageConverterModal } from "./ui/image-converter-modal";
 import { WasmImageConverterSettingTab } from "./settings-tab";
 import { sizePredictionService } from "./prediction/size-predictor";
 import { WebPSizePredictor } from "./prediction/webp-predictor";
 import { JPEGSizePredictor, PNGSizePredictor, AVIFSizePredictor } from "./prediction/canvas-predictor";
 import { initWasmLoaderContext } from "./converters/wasm-loader";
-import { saveImageAndInsert, saveOriginalFile, convertAndReplaceFile } from "./file-service";
+import { saveImageAndInsert, saveOriginalFile, convertAndReplaceFile, resolveSaveFolder } from "./file-service";
 import { isAnimatedGif } from "./utils/gif-check";
 
 export default class WasmImageConverterPlugin extends Plugin {
-  settings: ConverterSettings = { ...DEFAULT_SETTINGS };
+  settings: PluginSettings = createDefaultSettings();
 
   async onload() {
     await this.loadSettings();
@@ -76,7 +77,8 @@ export default class WasmImageConverterPlugin extends Plugin {
         const supportedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
         if (supportedExtensions.includes(file.extension.toLowerCase())) {
           menu.addItem((item) => {
-            const ext = getExtensionForConverter(this.settings.converterType).toUpperCase();
+            const preset = resolvePreset(this.settings, this.settings.defaultPresetId);
+            const ext = getExtensionForFormat(preset?.encode.format ?? "webp").toUpperCase();
             item
               .setTitle(`Convert to ${ext}...`)
               .setIcon("image-file")
@@ -112,38 +114,26 @@ export default class WasmImageConverterPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const result = migrateSettings(await this.loadData());
+    this.settings = result.settings;
 
-    // Migration: older versions had no isBuiltin flag. "Default" was always
-    // protected there (even if the user edited its fields). Other presets are
-    // treated as built-in only when every field matches the built-in
-    // definition; a user preset that merely shares the name stays custom
-    // (and blocks that built-in from being added below).
-    for (const preset of this.settings.presets) {
-      if (preset.isBuiltin === undefined) {
-        const builtin = DEFAULT_PRESETS.find(b => b.name === preset.name);
-        preset.isBuiltin = preset.name === "Default" || (!!builtin &&
-          builtin.converterType === preset.converterType &&
-          builtin.quality === preset.quality &&
-          builtin.maxWidth === preset.maxWidth &&
-          builtin.maxHeight === preset.maxHeight &&
-          builtin.enableResize === preset.enableResize &&
-          builtin.enableGrayscale === preset.enableGrayscale &&
-          builtin.attachmentFolder === preset.attachmentFolder);
-      }
+    if (result.discardedFolders.length > 0) {
+      const folder = this.settings.save.destination.folder;
+      const lines = result.discardedFolders.map(d => `  - ${d.presetName}: "${d.folder}"`).join("\n");
+      new Notice(
+        `WASM Image Converter: presets no longer have their own save folder. ` +
+        `Converted images are now saved to "${folder}". ` +
+        `These preset folders were removed:\n${lines}`,
+        0
+      );
     }
 
-    // Ensure all built-in presets exist (for users upgrading from older versions)
-    const existingNames = new Set(this.settings.presets.map(p => p.name));
-    for (const builtin of DEFAULT_PRESETS) {
-      if (!existingNames.has(builtin.name)) {
-        this.settings.presets.push({ ...builtin });
-      }
-    }
+    if (result.changed) await this.saveSettings();
+  }
 
-    // Migration: tiff cannot be decoded by the renderer, drop it from targets
-    this.settings.batchConvertExtensions =
-      this.settings.batchConvertExtensions.filter(ext => ext !== 'tiff');
+  /** Preset used by auto-convert and batch convert. */
+  private getAutoConvertPreset(): Preset | undefined {
+    return resolvePreset(this.settings, this.settings.autoConvertPresetId);
   }
 
   async saveSettings() {
@@ -283,11 +273,7 @@ export default class WasmImageConverterPlugin extends Plugin {
   }
 
   private async convertImage(imageFile: TFile): Promise<{ originalSize: number, convertedSize: number }> {
-    // Get the selected preset
-    const selectedPreset = this.settings.presets.find(
-      p => p.name === this.settings.autoConvertPreset
-    ) || this.settings.presets.find(p => p.name === "Default")
-      || this.settings.presets[0];
+    const selectedPreset = this.getAutoConvertPreset();
 
     if (!selectedPreset) {
       throw new Error('No preset found');
@@ -298,18 +284,12 @@ export default class WasmImageConverterPlugin extends Plugin {
     const blob = new Blob([arrayBuffer], { type: `image/${imageFile.extension}` });
     const file = new File([blob], imageFile.name, { type: blob.type });
 
-    const settings = { ...this.settings, attachmentFolder: selectedPreset.attachmentFolder };
     const result = await convertAndReplaceFile(
       this.app,
       imageFile,
       file,
-      settings,
-      selectedPreset.quality,
-      selectedPreset.enableResize,
-      selectedPreset.maxWidth,
-      selectedPreset.maxHeight,
-      selectedPreset.enableGrayscale,
-      selectedPreset.converterType
+      selectedPreset.encode,
+      resolveSaveFolder(this.settings.save)
     );
 
     return {
@@ -426,9 +406,7 @@ export default class WasmImageConverterPlugin extends Plugin {
     }
 
     // Get the selected preset for auto-conversion
-    const selectedPreset = this.settings.presets.find(p => p.name === this.settings.autoConvertPreset)
-      || this.settings.presets.find(p => p.name === "Default")
-      || this.settings.presets[0];
+    const selectedPreset = this.getAutoConvertPreset();
 
     if (!selectedPreset) {
       new Notice('❌ No preset found for auto-conversion');
@@ -438,8 +416,7 @@ export default class WasmImageConverterPlugin extends Plugin {
     // Process each file sequentially
     for (const file of supportedFiles) {
       try {
-        // Update the settings to use the preset's attachment folder
-        const settings = { ...this.settings, attachmentFolder: selectedPreset.attachmentFolder };
+        const folder = resolveSaveFolder(this.settings.save);
 
         // Skip animated GIF
         if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
@@ -447,7 +424,7 @@ export default class WasmImageConverterPlugin extends Plugin {
             if (!this.settings.processAnimatedGifs) {
               new Notice(`⚠️ Skipped animated GIF conversion: ${file.name}`);
               try {
-                const savedPath = await saveOriginalFile(this.app, file, settings.attachmentFolder);
+                const savedPath = await saveOriginalFile(this.app, file, folder);
                 const fileName = savedPath.split("/").pop()!;
                 const markdownLink = `![[${fileName}]]`;
                 editor.replaceRange(markdownLink, pos);
@@ -463,13 +440,8 @@ export default class WasmImageConverterPlugin extends Plugin {
         const result = await saveImageAndInsert(
           this.app,
           file,
-          settings,
-          selectedPreset.quality,
-          selectedPreset.enableResize,
-          selectedPreset.maxWidth,
-          selectedPreset.maxHeight,
-          selectedPreset.enableGrayscale,
-          selectedPreset.converterType
+          selectedPreset.encode,
+          folder
         );
 
         const fileName = result.path.split("/").pop()!;
@@ -518,9 +490,7 @@ export default class WasmImageConverterPlugin extends Plugin {
     }
 
     // Get the selected preset for auto-conversion
-    const selectedPreset = this.settings.presets.find(p => p.name === this.settings.autoConvertPreset)
-      || this.settings.presets.find(p => p.name === "Default")
-      || this.settings.presets[0];
+    const selectedPreset = this.getAutoConvertPreset();
 
     if (!selectedPreset) {
       new Notice('❌ No preset found for auto-conversion');
@@ -530,8 +500,7 @@ export default class WasmImageConverterPlugin extends Plugin {
     // Process each file sequentially
     for (const file of supportedFiles) {
       try {
-        // Update the settings to use the preset's attachment folder
-        const settings = { ...this.settings, attachmentFolder: selectedPreset.attachmentFolder };
+        const folder = resolveSaveFolder(this.settings.save);
 
         // Skip animated GIF
         if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
@@ -539,7 +508,7 @@ export default class WasmImageConverterPlugin extends Plugin {
             if (!this.settings.processAnimatedGifs) {
               new Notice(`⚠️ Skipped animated GIF conversion: ${file.name}`);
               try {
-                const savedPath = await saveOriginalFile(this.app, file, settings.attachmentFolder);
+                const savedPath = await saveOriginalFile(this.app, file, folder);
                 const fileName = savedPath.split("/").pop()!;
                 const markdownLink = `![[${fileName}]]`;
                 editor.replaceRange(markdownLink, cursor);
@@ -555,13 +524,8 @@ export default class WasmImageConverterPlugin extends Plugin {
         const result = await saveImageAndInsert(
           this.app,
           file,
-          settings,
-          selectedPreset.quality,
-          selectedPreset.enableResize,
-          selectedPreset.maxWidth,
-          selectedPreset.maxHeight,
-          selectedPreset.enableGrayscale,
-          selectedPreset.converterType
+          selectedPreset.encode,
+          folder
         );
 
         const fileName = result.path.split("/").pop()!;

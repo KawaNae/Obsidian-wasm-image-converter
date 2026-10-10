@@ -1,6 +1,6 @@
 import { App, Modal, Notice, setIcon, TFile } from "obsidian";
-import { ConverterSettings } from "../settings";
-import { saveImageAndInsert, convertAndReplaceFile } from "../file-service";
+import { EncodeSettings, PluginSettings } from "../settings";
+import { saveImageAndInsert, convertAndReplaceFile, resolveSaveFolder } from "../file-service";
 import { sizePredictionService, SizePredictionResult } from "../prediction/size-predictor";
 import { predictBySampleEncode } from "../prediction/sampled-predictor";
 
@@ -8,14 +8,14 @@ import { isAnimatedGif } from "../utils/gif-check";
 import { DropZone } from "./components/drop-zone";
 import { SettingsPanel } from "./components/settings-panel";
 
-export async function openImageConverterModal(app: App, baseSettings: ConverterSettings, initialFile: File | null = null, targetTFile: TFile | null = null): Promise<string | undefined> {
+export async function openImageConverterModal(app: App, settings: PluginSettings, initialFile: File | null = null, targetTFile: TFile | null = null): Promise<string | undefined> {
     return new Promise((resolve) => {
-        new ImageConverterModal(app, baseSettings, initialFile, targetTFile, resolve).open();
+        new ImageConverterModal(app, settings, initialFile, targetTFile, resolve).open();
     });
 }
 
 class ImageConverterModal extends Modal {
-    private settings: ConverterSettings;
+    private settings: PluginSettings;
     private initialFile: File | null;
     private targetTFile: TFile | null;
     private onResult: (value?: string) => void;
@@ -38,10 +38,10 @@ class ImageConverterModal extends Modal {
     private importBtn!: HTMLButtonElement;
     private predictionGeneration = 0;
 
-    constructor(app: App, baseSettings: ConverterSettings, initialFile: File | null, targetTFile: TFile | null, onResult: (value?: string) => void) {
+    constructor(app: App, settings: PluginSettings, initialFile: File | null, targetTFile: TFile | null, onResult: (value?: string) => void) {
         super(app);
-        // Clone settings so the panel edits a scratch copy
-        this.settings = { ...baseSettings };
+        // Read-only here: the panel edits its own copy of the encoding parameters
+        this.settings = settings;
         this.initialFile = initialFile;
         this.targetTFile = targetTFile;
         this.onResult = onResult;
@@ -116,9 +116,12 @@ class ImageConverterModal extends Modal {
         sourceBtnRow.appendChild(this.pasteBtn);
         sourceBtnRow.appendChild(this.importBtn);
 
-        this.settingsPanel = new SettingsPanel(this.settings, () => {
-            this.updatePrediction();
-        });
+        this.settingsPanel = new SettingsPanel(
+            this.settings.presets,
+            this.settings.defaultPresetId,
+            resolveSaveFolder(this.settings.save),
+            () => this.updatePrediction()
+        );
 
         // ===== Layout assembly (vertical stack) =====
         contentEl.appendChild(this.settingsPanel.getElement());
@@ -236,14 +239,7 @@ class ImageConverterModal extends Modal {
         }
 
         const file = this.selectedFiles[0];
-        const predictionOptions = {
-            converterType: this.settingsPanel.converterType,
-            quality: this.settingsPanel.quality,
-            enableGrayscale: this.settingsPanel.enableGrayscale,
-            enableResize: this.settingsPanel.enableResize,
-            maxWidth: this.settingsPanel.maxWidth,
-            maxHeight: this.settingsPanel.maxHeight
-        };
+        const predictionOptions = this.settingsPanel.getEncode();
 
         const useSampled = this.settings.enableSampledPrediction;
 
@@ -311,12 +307,13 @@ class ImageConverterModal extends Modal {
         this.setInputsDisabled(true);
 
         try {
-            const currentSettings = this.settingsPanel.getSettings();
+            const encode = this.settingsPanel.getEncode();
+            const folder = resolveSaveFolder(this.settings.save);
 
             if (this.targetTFile) {
-                await this.runReplaceConversion(currentSettings);
+                await this.runReplaceConversion(encode, folder);
             } else {
-                await this.runInsertConversion(currentSettings);
+                await this.runInsertConversion(encode, folder);
             }
         } catch (error) {
             console.error("Image conversion failed:", error);
@@ -333,7 +330,7 @@ class ImageConverterModal extends Modal {
     }
 
     /** Replace mode (context menu) - single file, overwrites targetTFile. */
-    private async runReplaceConversion(currentSettings: ConverterSettings) {
+    private async runReplaceConversion(encode: EncodeSettings, folder: string) {
         const file = this.selectedFiles[0];
         this.convertBtn.textContent = "Converting...";
 
@@ -341,13 +338,8 @@ class ImageConverterModal extends Modal {
             this.app,
             this.targetTFile!,
             file,
-            currentSettings,
-            this.settingsPanel.quality,
-            this.settingsPanel.enableResize,
-            this.settingsPanel.maxWidth,
-            this.settingsPanel.maxHeight,
-            this.settingsPanel.enableGrayscale,
-            this.settingsPanel.converterType
+            encode,
+            folder
         );
 
         const originalKB = (result.originalSize / 1024).toFixed(2);
@@ -367,7 +359,7 @@ class ImageConverterModal extends Modal {
     }
 
     /** Insert mode - converts each selected file into the attachment folder. */
-    private async runInsertConversion(currentSettings: ConverterSettings) {
+    private async runInsertConversion(encode: EncodeSettings, folder: string) {
         const links: string[] = [];
         const errors: string[] = [];
         let totalOriginalSize = 0;
@@ -394,13 +386,8 @@ class ImageConverterModal extends Modal {
                 const result = await saveImageAndInsert(
                     this.app,
                     file,
-                    currentSettings,
-                    this.settingsPanel.quality,
-                    this.settingsPanel.enableResize,
-                    this.settingsPanel.maxWidth,
-                    this.settingsPanel.maxHeight,
-                    this.settingsPanel.enableGrayscale,
-                    this.settingsPanel.converterType
+                    encode,
+                    folder
                 );
 
                 links.push(`![[${result.path}]]`);

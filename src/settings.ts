@@ -1,125 +1,167 @@
-export enum ConverterType {
-  WASM_WEBP = "wasm-webp",
-  CANVAS_PNG = "canvas-png",
-  CANVAS_JPEG = "canvas-jpeg",
-  WASM_AVIF = "wasm-avif",
+// Settings model. Pure module: must not import "obsidian" so that the
+// migration and the helpers below can be unit-tested with vitest.
+
+export type ImageFormat = "webp" | "avif" | "jpeg" | "png";
+
+/** Encoding parameters: the content of a preset. */
+export interface EncodeSettings {
+  format: ImageFormat;
+  quality: number; // 0.1 - 1.0. Unused for png
+  resize: { enabled: boolean; maxWidth: number; maxHeight: number };
+  grayscale: boolean;
 }
 
-export interface PresetSettings {
+export interface Preset {
+  id: string; // presets are identified by id, never by name
   name: string;
-  converterType: ConverterType;
-  quality: number;
-  maxWidth: number;
-  maxHeight: number;
-  enableResize: boolean;
-  enableGrayscale: boolean;
-  attachmentFolder: string;
-  isBuiltin?: boolean; // built-in presets cannot be deleted or renamed
+  builtin: boolean; // built-in presets cannot be deleted or renamed
+  encode: EncodeSettings;
 }
 
-export const CONVERTER_OPTIONS = [
-  { value: ConverterType.WASM_WEBP, label: "WASM WebP", description: "WebP conversion using WebAssembly" },
-  { value: ConverterType.CANVAS_JPEG, label: "JPEG", description: "JPEG conversion using Canvas API" },
-  { value: ConverterType.CANVAS_PNG, label: "PNG", description: "Lossless PNG conversion using Canvas API" },
-  { value: ConverterType.WASM_AVIF, label: "WASM AVIF", description: "AVIF conversion using WebAssembly (downloaded on first use)" },
+/** Where and under which name converted files are saved. Not part of presets. */
+export interface SaveSettings {
+  destination: { mode: "obsidian" | "folder"; folder: string };
+  nameTemplate: string;
+}
+
+export const SETTINGS_VERSION = 2;
+
+export interface PluginSettings {
+  settingsVersion: typeof SETTINGS_VERSION;
+  presets: Preset[];
+  defaultPresetId: string; // initial preset of the converter dialog
+  autoConvertPresetId: string; // preset used by drag & drop / paste auto-convert and batch convert
+  save: SaveSettings;
+  autoReadClipboard: boolean; // read the clipboard when the dialog opens
+  enableAutoConvert: boolean; // auto-convert on drag & drop / paste
+  batchConvertExtensions: string[]; // target extensions of batch convert and auto-convert
+  processAnimatedGifs: boolean; // convert animated GIFs (result is a static image)
+  enableSampledPrediction: boolean; // refine the size prediction with a sample encode
+}
+
+export const FORMAT_OPTIONS: { value: ImageFormat; label: string; description: string }[] = [
+  { value: "webp", label: "WASM WebP", description: "WebP conversion using WebAssembly" },
+  { value: "jpeg", label: "JPEG", description: "JPEG conversion using Canvas API" },
+  { value: "png", label: "PNG", description: "Lossless PNG conversion using Canvas API" },
+  { value: "avif", label: "WASM AVIF", description: "AVIF conversion using WebAssembly (downloaded on first use)" },
 ];
 
-/** Returns the file extension for a given converter type */
-export function getExtensionForConverter(converterType: ConverterType): string {
-  switch (converterType) {
-    case ConverterType.CANVAS_PNG: return "png";
-    case ConverterType.CANVAS_JPEG: return "jpg";
-    case ConverterType.WASM_AVIF: return "avif";
-    case ConverterType.WASM_WEBP:
+export function isImageFormat(value: unknown): value is ImageFormat {
+  return value === "webp" || value === "avif" || value === "jpeg" || value === "png";
+}
+
+/** Returns the file extension for a given output format */
+export function getExtensionForFormat(format: ImageFormat): string {
+  switch (format) {
+    case "png": return "png";
+    case "jpeg": return "jpg";
+    case "avif": return "avif";
+    case "webp":
     default: return "webp";
   }
 }
 
-export interface ConverterSettings {
-  converterType: ConverterType; // 現在選択されているコンバーター
-  quality: number;          // 0.1 - 1.0
-  maxWidth: number;
-  maxHeight: number;
-  enableResize: boolean;
-  attachmentFolder: string; // 保存先
-  autoReadClipboard: boolean; // 起動時クリップボード自動読み取り
-  enableGrayscale: boolean; // グレースケール変換
-  enableAutoConvert: boolean; // ドラッグ&ドロップ時の自動変換
-  batchConvertExtensions: string[]; // バッチ変換対象の拡張子
-  processAnimatedGifs: boolean; // アニメーションGIFを変換するかどうか（変換すると静止画になる）
-  autoConvertPreset: string; // 自動変換時に使用するプリセット名
-  enableSampledPrediction: boolean; // サイズ予測をサンプル実エンコードで精緻化する
-  presets: PresetSettings[]; // プリセット
+export function getFormatLabel(format: ImageFormat): string {
+  return FORMAT_OPTIONS.find(o => o.value === format)?.label ?? format;
 }
 
-export const DEFAULT_PRESET: PresetSettings = {
-  name: "Default",
-  converterType: ConverterType.WASM_WEBP,
+export const DEFAULT_PRESET_ID = "default";
+
+export const DEFAULT_ENCODE: EncodeSettings = {
+  format: "webp",
   quality: 0.8,
-  maxWidth: 1920,
-  maxHeight: 1080,
-  enableResize: true,
-  enableGrayscale: false,
-  attachmentFolder: "Attachments",
-  isBuiltin: true,
+  resize: { enabled: true, maxWidth: 1920, maxHeight: 1080 },
+  grayscale: false,
 };
 
-export const BUILTIN_PRESET_PHOTO: PresetSettings = {
-  name: "Photo",
-  converterType: ConverterType.WASM_AVIF,
-  quality: 0.75,
-  maxWidth: 1920,
-  maxHeight: 1080,
-  enableResize: true,
-  enableGrayscale: false,
-  attachmentFolder: "Attachments",
-  isBuiltin: true,
-};
-
-export const BUILTIN_PRESET_ILLUSTRATION: PresetSettings = {
-  name: "Illustration",
-  converterType: ConverterType.WASM_WEBP,
-  quality: 0.9,
-  maxWidth: 1920,
-  maxHeight: 1080,
-  enableResize: true,
-  enableGrayscale: false,
-  attachmentFolder: "Attachments",
-  isBuiltin: true,
-};
-
-export const BUILTIN_PRESET_DOCUMENT: PresetSettings = {
-  name: "Document",
-  converterType: ConverterType.WASM_WEBP,
-  quality: 0.5,
-  maxWidth: 1200,
-  maxHeight: 1600,
-  enableResize: true,
-  enableGrayscale: true,
-  attachmentFolder: "Attachments",
-  isBuiltin: true,
-};
-
-export const DEFAULT_PRESETS: PresetSettings[] = [
-  DEFAULT_PRESET,
-  BUILTIN_PRESET_PHOTO,
-  BUILTIN_PRESET_ILLUSTRATION,
-  BUILTIN_PRESET_DOCUMENT,
+export const BUILTIN_PRESETS: readonly Preset[] = [
+  {
+    id: DEFAULT_PRESET_ID,
+    name: "Default",
+    builtin: true,
+    encode: DEFAULT_ENCODE,
+  },
+  {
+    id: "photo",
+    name: "Photo",
+    builtin: true,
+    encode: { format: "avif", quality: 0.75, resize: { enabled: true, maxWidth: 1920, maxHeight: 1080 }, grayscale: false },
+  },
+  {
+    id: "illustration",
+    name: "Illustration",
+    builtin: true,
+    encode: { format: "webp", quality: 0.9, resize: { enabled: true, maxWidth: 1920, maxHeight: 1080 }, grayscale: false },
+  },
+  {
+    id: "document",
+    name: "Document",
+    builtin: true,
+    encode: { format: "webp", quality: 0.5, resize: { enabled: true, maxWidth: 1200, maxHeight: 1600 }, grayscale: true },
+  },
 ];
 
-export const DEFAULT_SETTINGS: ConverterSettings = {
-  converterType: DEFAULT_PRESET.converterType,
-  quality: DEFAULT_PRESET.quality,
-  maxWidth: DEFAULT_PRESET.maxWidth,
-  maxHeight: DEFAULT_PRESET.maxHeight,
-  enableResize: DEFAULT_PRESET.enableResize,
-  attachmentFolder: DEFAULT_PRESET.attachmentFolder,
-  autoReadClipboard: false, // デフォルトはオフ（iPadでの問題回避）
-  enableGrayscale: DEFAULT_PRESET.enableGrayscale,
-  enableAutoConvert: false, // デフォルトはオフ（従来動作を維持）
-  batchConvertExtensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp'], // デフォルトは全対象（tiffはChromiumがデコード不可のため除外）
-  processAnimatedGifs: false, // デフォルトは変換しない（アニメーション保持）
-  autoConvertPreset: "Default", // デフォルトプリセットを使用
-  enableSampledPrediction: true, // デフォルトはオン（低速端末ではオフ推奨）
-  presets: [...DEFAULT_PRESETS], // デフォルトプリセット
-};
+export const DEFAULT_NAME_TEMPLATE = "IMG-{date:YYYYMMDD[T]HHmmssSSS}-{size}";
+export const DEFAULT_FOLDER = "Attachments";
+
+export function cloneEncode(encode: EncodeSettings): EncodeSettings {
+  return { ...encode, resize: { ...encode.resize } };
+}
+
+export function clonePreset(preset: Preset): Preset {
+  return { ...preset, encode: cloneEncode(preset.encode) };
+}
+
+export function builtinPresets(): Preset[] {
+  return BUILTIN_PRESETS.map(clonePreset);
+}
+
+/** Settings of a fresh install. Every call returns a new, unshared object. */
+export function createDefaultSettings(): PluginSettings {
+  return {
+    settingsVersion: SETTINGS_VERSION,
+    presets: builtinPresets(),
+    defaultPresetId: DEFAULT_PRESET_ID,
+    autoConvertPresetId: DEFAULT_PRESET_ID,
+    save: {
+      destination: { mode: "obsidian", folder: DEFAULT_FOLDER },
+      nameTemplate: DEFAULT_NAME_TEMPLATE,
+    },
+    autoReadClipboard: false, // off by default (avoids permission issues on iPad)
+    enableAutoConvert: false,
+    // tiff is excluded because Chromium cannot decode it
+    batchConvertExtensions: ["jpg", "jpeg", "png", "gif", "bmp"],
+    processAnimatedGifs: false, // keep animations by default
+    enableSampledPrediction: true, // turn off on low-power devices
+  };
+}
+
+/** Random id for user-created presets. */
+export function createPresetId(): string {
+  return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Looks a preset up by id. Falls back to the default preset, then to the
+ * first preset, so a dangling id (deleted preset) never breaks conversion.
+ */
+export function resolvePreset(settings: Pick<PluginSettings, "presets" | "defaultPresetId">, id: string): Preset | undefined {
+  return settings.presets.find(p => p.id === id)
+    ?? settings.presets.find(p => p.id === settings.defaultPresetId)
+    ?? settings.presets[0];
+}
+
+/**
+ * Points dangling preset ids (deleted or reset presets) back at existing
+ * presets: the default id at "default" or the first preset, the auto-convert
+ * id at the default preset.
+ */
+export function repairPresetRefs(settings: Pick<PluginSettings, "presets" | "defaultPresetId" | "autoConvertPresetId">) {
+  const has = (id: string) => settings.presets.some(p => p.id === id);
+  if (!has(settings.defaultPresetId)) {
+    settings.defaultPresetId = has(DEFAULT_PRESET_ID) ? DEFAULT_PRESET_ID : (settings.presets[0]?.id ?? DEFAULT_PRESET_ID);
+  }
+  if (!has(settings.autoConvertPresetId)) {
+    settings.autoConvertPresetId = settings.defaultPresetId;
+  }
+}

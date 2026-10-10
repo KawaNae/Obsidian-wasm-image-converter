@@ -1,12 +1,16 @@
-import { ConverterSettings, ConverterType, CONVERTER_OPTIONS, PresetSettings } from "../../settings";
+import { EncodeSettings, FORMAT_OPTIONS, ImageFormat, Preset, cloneEncode, resolvePreset } from "../../settings";
 
 export class SettingsPanel {
     element: HTMLDivElement;
-    private settings: ConverterSettings;
+    private presets: Preset[];
+    private defaultPresetId: string;
+    private folder: string;
+    /** Working copy edited by the inputs; presets themselves are never mutated. */
+    private encode: EncodeSettings;
     private onChange: () => void;
 
     private presetSelect!: HTMLSelectElement;
-    private converterSelect!: HTMLSelectElement;
+    private formatSelect!: HTMLSelectElement;
     private qualityInput!: HTMLInputElement;
     private qualityRow!: HTMLDivElement;
     private resizeCheckbox!: HTMLInputElement;
@@ -15,8 +19,17 @@ export class SettingsPanel {
     private grayscaleCheckbox!: HTMLInputElement;
     private folderInfo!: HTMLDivElement;
 
-    constructor(settings: ConverterSettings, onChange: () => void) {
-        this.settings = settings;
+    /**
+     * @param presets - presets to choose from
+     * @param defaultPresetId - preset selected initially
+     * @param folder - folder shown as the save destination
+     */
+    constructor(presets: Preset[], defaultPresetId: string, folder: string, onChange: () => void) {
+        this.presets = presets;
+        const initial = resolvePreset({ presets, defaultPresetId }, defaultPresetId);
+        this.defaultPresetId = initial?.id ?? defaultPresetId;
+        this.encode = cloneEncode(initial?.encode ?? presets[0].encode);
+        this.folder = folder;
         this.onChange = onChange;
         this.element = document.createElement("div");
         this.render();
@@ -25,77 +38,74 @@ export class SettingsPanel {
     private render() {
         this.element.className = "wasm-image-modal__right-col";
 
-        // Preset
+        // Preset (the default preset first, then the others in order)
         this.presetSelect = this.createSelect("Preset:", (val) => this.handlePresetChange(val));
-        // Add Default option
-        const defaultOption = document.createElement("option");
-        defaultOption.value = "default";
-        defaultOption.textContent = "Default";
-        this.presetSelect.appendChild(defaultOption);
-        // Add other presets
-        this.settings.presets.forEach((preset, index) => {
-            if (preset.name !== "Default") {
-                const option = document.createElement("option");
-                option.value = String(index);
-                option.textContent = preset.name;
-                this.presetSelect.appendChild(option);
-            }
+        const ordered = [
+            ...this.presets.filter(p => p.id === this.defaultPresetId),
+            ...this.presets.filter(p => p.id !== this.defaultPresetId),
+        ];
+        ordered.forEach(preset => {
+            const option = document.createElement("option");
+            option.value = preset.id;
+            option.textContent = preset.name;
+            this.presetSelect.appendChild(option);
         });
+        this.presetSelect.value = this.defaultPresetId;
 
-        // Converter
-        this.converterSelect = this.createSelect("Converter:", (val) => {
-            this.settings.converterType = val as ConverterType;
+        // Format
+        this.formatSelect = this.createSelect("Converter:", (val) => {
+            this.encode.format = val as ImageFormat;
             this.updateQualityState();
-            this.presetSelect.value = "default";
+            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
-        CONVERTER_OPTIONS.forEach(option => {
+        FORMAT_OPTIONS.forEach(option => {
             const opt = document.createElement("option");
             opt.value = option.value;
             opt.textContent = option.label;
-            this.converterSelect.appendChild(opt);
+            this.formatSelect.appendChild(opt);
         });
-        this.converterSelect.value = this.settings.converterType;
+        this.formatSelect.value = this.encode.format;
 
         // Quality (disabled for PNG since it's lossless)
-        this.qualityInput = this.createNumberInput("Quality:", 0.1, 1.0, 0.1, this.settings.quality, (val) => {
-            this.settings.quality = val;
-            this.presetSelect.value = "default";
+        this.qualityInput = this.createNumberInput("Quality:", 0.1, 1.0, 0.1, this.encode.quality, (val) => {
+            this.encode.quality = val;
+            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
         // Store the quality row for toggling visibility
         this.qualityRow = this.qualityInput.parentElement as HTMLDivElement;
 
         // Grayscale
-        this.grayscaleCheckbox = this.createCheckbox("Grayscale", this.settings.enableGrayscale, (checked) => {
-            this.settings.enableGrayscale = checked;
-            this.presetSelect.value = "default";
+        this.grayscaleCheckbox = this.createCheckbox("Grayscale", this.encode.grayscale, (checked) => {
+            this.encode.grayscale = checked;
+            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
 
         // Resize
-        this.resizeCheckbox = this.createCheckbox("Resize", this.settings.enableResize, (checked) => {
-            this.settings.enableResize = checked;
-            this.presetSelect.value = "default";
+        this.resizeCheckbox = this.createCheckbox("Resize", this.encode.resize.enabled, (checked) => {
+            this.encode.resize.enabled = checked;
+            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
 
         // Max Width
-        this.maxWInput = this.createNumberInput("Max Width:", 100, 5000, 1, this.settings.maxWidth, (val) => {
+        this.maxWInput = this.createNumberInput("Max Width:", 100, 5000, 1, this.encode.resize.maxWidth, (val) => {
             const clamped = Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
             this.maxWInput.value = String(clamped);
-            this.settings.maxWidth = clamped;
-            this.presetSelect.value = "default";
+            this.encode.resize.maxWidth = clamped;
+            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
         this.maxWInput.placeholder = "1920";
 
         // Max Height
-        this.maxHInput = this.createNumberInput("Max Height:", 100, 5000, 1, this.settings.maxHeight, (val) => {
+        this.maxHInput = this.createNumberInput("Max Height:", 100, 5000, 1, this.encode.resize.maxHeight, (val) => {
             const clamped = Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
             this.maxHInput.value = String(clamped);
-            this.settings.maxHeight = clamped;
-            this.presetSelect.value = "default";
+            this.encode.resize.maxHeight = clamped;
+            this.presetSelect.value = this.defaultPresetId;
             this.notifyChange();
         });
         this.maxHInput.placeholder = "1080";
@@ -103,16 +113,16 @@ export class SettingsPanel {
         // Folder Info
         this.folderInfo = document.createElement("div");
         this.folderInfo.className = "wasm-image-modal__folder-info";
-        this.folderInfo.textContent = `Save to: ${this.settings.attachmentFolder}/`;
+        this.folderInfo.textContent = `Save to: ${this.folder}/`;
         this.element.appendChild(this.folderInfo);
 
-        // Set initial quality state based on converter type
+        // Set initial quality state based on format
         this.updateQualityState();
     }
 
     /** Disable quality input for lossless formats (PNG) */
     private updateQualityState() {
-        const isLossless = this.settings.converterType === ConverterType.CANVAS_PNG;
+        const isLossless = this.encode.format === "png";
         this.qualityInput.disabled = isLossless;
         if (this.qualityRow) {
             this.qualityRow.style.opacity = isLossless ? "0.5" : "1";
@@ -190,35 +200,22 @@ export class SettingsPanel {
         return checkbox;
     }
 
-    private handlePresetChange(val: string) {
-        if (val === "default") {
-            const defaultPreset = this.settings.presets.find(p => p.name === "Default");
-            if (defaultPreset) this.applyPreset(defaultPreset);
-        } else {
-            const presetIndex = parseInt(val);
-            const selectedPreset = this.settings.presets[presetIndex];
-            if (selectedPreset) this.applyPreset(selectedPreset);
-        }
+    private handlePresetChange(id: string) {
+        const preset = this.presets.find(p => p.id === id);
+        if (preset) this.applyPreset(preset);
         this.notifyChange();
     }
 
-    private applyPreset(preset: PresetSettings) {
-        this.settings.converterType = preset.converterType;
-        this.settings.quality = preset.quality;
-        this.settings.maxWidth = preset.maxWidth;
-        this.settings.maxHeight = preset.maxHeight;
-        this.settings.enableResize = preset.enableResize;
-        this.settings.enableGrayscale = preset.enableGrayscale;
-        this.settings.attachmentFolder = preset.attachmentFolder;
+    private applyPreset(preset: Preset) {
+        this.encode = cloneEncode(preset.encode);
 
         // Update UI
-        this.converterSelect.value = preset.converterType;
-        this.qualityInput.value = String(preset.quality);
-        this.maxWInput.value = String(preset.maxWidth);
-        this.maxHInput.value = String(preset.maxHeight);
-        this.resizeCheckbox.checked = preset.enableResize;
-        this.grayscaleCheckbox.checked = preset.enableGrayscale;
-        this.folderInfo.textContent = `Save to: ${preset.attachmentFolder}/`;
+        this.formatSelect.value = this.encode.format;
+        this.qualityInput.value = String(this.encode.quality);
+        this.maxWInput.value = String(this.encode.resize.maxWidth);
+        this.maxHInput.value = String(this.encode.resize.maxHeight);
+        this.resizeCheckbox.checked = this.encode.resize.enabled;
+        this.grayscaleCheckbox.checked = this.encode.grayscale;
         this.updateQualityState();
     }
 
@@ -230,15 +227,8 @@ export class SettingsPanel {
         return this.element;
     }
 
-    public getSettings(): ConverterSettings {
-        return this.settings;
+    /** The encoding parameters currently shown in the panel. */
+    public getEncode(): EncodeSettings {
+        return cloneEncode(this.encode);
     }
-
-    // getters for current values if needed directly
-    public get quality() { return parseFloat(this.qualityInput.value) || this.settings.quality; }
-    public get maxWidth() { return parseInt(this.maxWInput.value) || this.settings.maxWidth; }
-    public get maxHeight() { return parseInt(this.maxHInput.value) || this.settings.maxHeight; }
-    public get enableResize() { return this.resizeCheckbox.checked; }
-    public get enableGrayscale() { return this.grayscaleCheckbox.checked; }
-    public get converterType() { return this.converterSelect.value as ConverterType; }
 }

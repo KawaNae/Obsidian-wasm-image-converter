@@ -1,8 +1,6 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
-import { ConverterSettings, ConverterType, getExtensionForConverter } from "./settings";
-import { convertImageToWebP, ImageProcessingOptions } from "./converters/webp-converter";
-import { convertImageWithCanvas } from "./converters/canvas-converter";
-import { convertImageToAVIF } from "./converters/avif-converter";
+import { EncodeSettings, SaveSettings } from "./settings";
+import { encodeImage } from "./converters/encode";
 
 export interface ConversionResult {
   path: string;
@@ -10,18 +8,14 @@ export interface ConversionResult {
   convertedSize: number;
 }
 
-export function createProcessingOptions(
-  settings: ConverterSettings,
-  overrides?: Partial<ImageProcessingOptions>
-): ImageProcessingOptions {
-  return {
-    quality: settings.quality,
-    enableResize: settings.enableResize,
-    maxWidth: settings.maxWidth,
-    maxHeight: settings.maxHeight,
-    enableGrayscale: settings.enableGrayscale,
-    ...overrides
-  };
+/**
+ * Folder new files are saved to.
+ * Interim: both destination modes use the fixed folder, which keeps the
+ * pre-0.7 behavior. Following Obsidian's attachment setting comes with the
+ * save layer.
+ */
+export function resolveSaveFolder(save: SaveSettings): string {
+  return save.destination.folder;
 }
 
 /**
@@ -54,49 +48,13 @@ async function createBinaryFile(app: App, destPath: string, data: ArrayBuffer): 
 export async function saveImageAndInsert(
   app: App,
   file: File,
-  settings: ConverterSettings,
-  quality: number,
-  enableResize: boolean,
-  maxWidth: number,
-  maxHeight: number,
-  enableGrayscale: boolean = false,
-  converterType: ConverterType = ConverterType.WASM_WEBP
+  encode: EncodeSettings,
+  folder: string
 ): Promise<ConversionResult> {
-  const folder = normalizePath(settings.attachmentFolder);
+  folder = normalizePath(folder);
+  const { blob: convertedBlob, extension } = await encodeImage(file, encode);
 
-  const processingOptions: ImageProcessingOptions = createProcessingOptions(settings, {
-    quality,
-    enableResize,
-    maxWidth,
-    maxHeight,
-    enableGrayscale
-  });
-
-  // Convert image based on converter type
-  let convertedBlob: Blob;
-  let fileExtension: string;
-
-  switch (converterType) {
-    case ConverterType.CANVAS_PNG:
-      convertedBlob = await convertImageWithCanvas(file, "image/png", processingOptions);
-      fileExtension = "png";
-      break;
-    case ConverterType.CANVAS_JPEG:
-      convertedBlob = await convertImageWithCanvas(file, "image/jpeg", processingOptions);
-      fileExtension = "jpg";
-      break;
-    case ConverterType.WASM_AVIF:
-      convertedBlob = await convertImageToAVIF(file, processingOptions);
-      fileExtension = "avif";
-      break;
-    case ConverterType.WASM_WEBP:
-    default:
-      convertedBlob = await convertImageToWebP(file, processingOptions);
-      fileExtension = "webp";
-      break;
-  }
-
-  const fileName = generateFileName(fileExtension, convertedBlob.size);
+  const fileName = generateFileName(extension, convertedBlob.size);
   const destPath = normalizePath(`${folder}/${fileName}`);
 
   await ensureFolder(app, folder);
@@ -139,50 +97,12 @@ export async function convertAndReplaceFile(
   app: App,
   targetFile: TFile,
   file: File, // Source content
-  settings: ConverterSettings,
-  quality: number,
-  enableResize: boolean,
-  maxWidth: number,
-  maxHeight: number,
-  enableGrayscale: boolean,
-  converterType: ConverterType
+  encode: EncodeSettings,
+  folder: string
 ): Promise<ConversionResult> {
-  const folder = normalizePath(settings.attachmentFolder);
-
-  const processingOptions: ImageProcessingOptions = createProcessingOptions(settings, {
-    quality,
-    enableResize,
-    maxWidth,
-    maxHeight,
-    enableGrayscale
-  });
-
-  // Convert
-  let convertedBlob: Blob;
-  let fileExtension: string;
-
-  switch (converterType) {
-    case ConverterType.CANVAS_PNG:
-      convertedBlob = await convertImageWithCanvas(file, "image/png", processingOptions);
-      fileExtension = "png";
-      break;
-    case ConverterType.CANVAS_JPEG:
-      convertedBlob = await convertImageWithCanvas(file, "image/jpeg", processingOptions);
-      fileExtension = "jpg";
-      break;
-    case ConverterType.WASM_AVIF:
-      convertedBlob = await convertImageToAVIF(file, processingOptions);
-      fileExtension = "avif";
-      break;
-    case ConverterType.WASM_WEBP:
-    default:
-      convertedBlob = await convertImageToWebP(file, processingOptions);
-      fileExtension = "webp";
-      break;
-  }
-
+  const { blob, extension } = await encodeImage(file, encode);
   // Overwrite and rename
-  return replaceFileContentAndPath(app, targetFile, convertedBlob, folder, fileExtension);
+  return replaceFileContentAndPath(app, targetFile, blob, folder, extension);
 }
 
 /**

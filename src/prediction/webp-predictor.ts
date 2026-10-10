@@ -1,12 +1,12 @@
-import { ConverterType } from "../settings";
-import { SizePredictor, SizePredictionResult, SizePredictionOptions } from "./size-predictor";
+import { EncodeSettings, ImageFormat } from "../settings";
+import { SizePredictor, SizePredictionResult } from "./size-predictor";
 
 export class WebPSizePredictor implements SizePredictor {
-  supportedType = ConverterType.WASM_WEBP;
+  supportedType: ImageFormat = "webp";
 
   async predict(
     originalFile: File,
-    options: SizePredictionOptions
+    options: EncodeSettings
   ): Promise<SizePredictionResult> {
     // Get image dimensions and analyze content
     const imageData = await this.analyzeImage(originalFile);
@@ -137,15 +137,15 @@ export class WebPSizePredictor implements SizePredictor {
   private calculateEffectiveDimensions(
     originalWidth: number,
     originalHeight: number,
-    options: SizePredictionOptions
+    options: EncodeSettings
   ): { width: number; height: number } {
-    if (!options.enableResize) {
+    if (!options.resize.enabled) {
       return { width: originalWidth, height: originalHeight };
     }
 
     const aspectRatio = originalWidth / originalHeight;
-    const maxWidth = options.maxWidth;
-    const maxHeight = options.maxHeight;
+    const maxWidth = options.resize.maxWidth;
+    const maxHeight = options.resize.maxHeight;
 
     if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
       return { width: originalWidth, height: originalHeight };
@@ -166,14 +166,14 @@ export class WebPSizePredictor implements SizePredictor {
     originalSize: number,
     imageData: { width: number; height: number; hasTransparency: boolean; complexity: number },
     effectiveDimensions: { width: number; height: number },
-    options: SizePredictionOptions
+    options: EncodeSettings
   ): number {
     // Use the provided WebP size prediction algorithm
     const predictedSize = this.webpSizePredict(
       effectiveDimensions.width,
       effectiveDimensions.height,
       options.quality * 100, // Convert 0-1 to 0-100
-      options.enableGrayscale,
+      options.grayscale,
       imageData.complexity
     );
 
@@ -196,7 +196,7 @@ export class WebPSizePredictor implements SizePredictor {
   }
 
 
-  private calculateConfidence(file: File, options: SizePredictionOptions): number {
+  private calculateConfidence(file: File, options: EncodeSettings): number {
     let confidence = 0.7; // Base confidence
 
     // Higher confidence for common image types
