@@ -352,6 +352,11 @@
     padding: 4px 0 8px;
 }
 
+.wasm-image-settings .wasm-image-settings__template {
+    width: 100%;
+    min-width: 18em;
+}
+
 .wasm-image-settings .wasm-image-settings__nav {
     display: flex;
     flex-wrap: nowrap;

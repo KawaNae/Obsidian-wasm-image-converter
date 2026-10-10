@@ -1,11 +1,12 @@
-import { Notice, Plugin, Editor, Platform, MarkdownView, TFile, Modal, normalizePath } from "obsidian";
+import { Notice, Plugin, Editor, Platform, MarkdownView, TFile, Modal } from "obsidian";
 import { PluginSettings, Preset, createDefaultSettings, resolvePreset } from "./settings";
 import { migrateSettings } from "./settings-migration";
 import { openImageConverterModal } from "./ui/image-converter-modal";
 import { WasmImageConverterSettingTab } from "./settings-tab";
 import { initWasmLoaderContext } from "./conversion/wasm-loader";
 import { encoderFor } from "./conversion/encoders";
-import { saveImageAndInsert, saveOriginalFile, convertAndReplaceFile, resolveSaveFolder } from "./file-service";
+import { convertBlob } from "./conversion/convert";
+import { embedLink, replaceExisting, saveNew } from "./save/save";
 import { isAnimatedGif } from "./utils/gif-check";
 
 export default class WasmImageConverterPlugin extends Plugin {
@@ -28,10 +29,10 @@ export default class WasmImageConverterPlugin extends Plugin {
       icon: "image-plus", // 他のオプション: "image", "convert", "camera", "file-image"
       callback: async () => {
         try {
-          const link = await openImageConverterModal(this.app, this.settings);
+          const active = this.app.workspace.getActiveFile();
+          const link = await openImageConverterModal(this.app, this.settings, active?.path ?? "");
           if (!link) return;
 
-          const active = this.app.workspace.getActiveFile();
           if (active) {
             const view = this.app.workspace.getActiveViewOfType(MarkdownView);
             const editor = view?.editor;
@@ -82,7 +83,8 @@ export default class WasmImageConverterPlugin extends Plugin {
                     type: 'image/' + (file.extension === 'jpg' ? 'jpeg' : file.extension)
                   });
 
-                  const link = await openImageConverterModal(this.app, this.settings, imageFile, file);
+                  const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+                  const link = await openImageConverterModal(this.app, this.settings, sourcePath, imageFile, file);
 
                   if (link) {
                     new Notice("✅ Image converted successfully");
@@ -273,16 +275,11 @@ export default class WasmImageConverterPlugin extends Plugin {
 
     // Read the original file
     const arrayBuffer = await this.app.vault.readBinary(imageFile);
-    const blob = new Blob([arrayBuffer], { type: `image/${imageFile.extension}` });
-    const file = new File([blob], imageFile.name, { type: blob.type });
+    const source = new Blob([arrayBuffer], { type: `image/${imageFile.extension}` });
 
-    const result = await convertAndReplaceFile(
-      this.app,
-      imageFile,
-      file,
-      selectedPreset.encode,
-      resolveSaveFolder(this.settings.save)
-    );
+    const encode = selectedPreset.encode;
+    const converted = await convertBlob(source, encode);
+    const result = await replaceExisting(this.app, imageFile, converted, encoderFor(encode.format).extension);
 
     return {
       originalSize: result.originalSize,
@@ -291,6 +288,19 @@ export default class WasmImageConverterPlugin extends Plugin {
   }
 
   // ===== Auto-Convert Events =====
+
+  /**
+   * Saves `blob` (converted, or the original when it is kept as is) as a new
+   * file for the note at `sourcePath` and returns its embed link.
+   */
+  private async saveForNote(source: File, blob: Blob, extension: string, sourcePath: string): Promise<string> {
+    const saved = await saveNew(this.app, blob, extension, {
+      ...this.settings.save,
+      sourcePath,
+      originalName: source.name,
+    });
+    return embedLink(this.app, saved, sourcePath);
+  }
 
   private registerAutoConvertEvents() {
     // Auto-convert is desktop-only (platform never changes at runtime)
@@ -408,17 +418,13 @@ export default class WasmImageConverterPlugin extends Plugin {
     // Process each file sequentially
     for (const file of supportedFiles) {
       try {
-        const folder = resolveSaveFolder(this.settings.save);
-
         // Skip animated GIF
         if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
           if (await isAnimatedGif(file)) {
             if (!this.settings.processAnimatedGifs) {
               new Notice(`⚠️ Skipped animated GIF conversion: ${file.name}`);
               try {
-                const savedPath = await saveOriginalFile(this.app, file, folder);
-                const fileName = savedPath.split("/").pop()!;
-                const markdownLink = `![[${fileName}]]`;
+                const markdownLink = await this.saveForNote(file, file, file.name.match(/\.([^.]+)$/)?.[1] ?? 'gif', activeFile.path);
                 editor.replaceRange(markdownLink, pos);
               } catch (err) {
                 console.error("Failed to save original GIF:", err);
@@ -429,15 +435,9 @@ export default class WasmImageConverterPlugin extends Plugin {
           }
         }
 
-        const result = await saveImageAndInsert(
-          this.app,
-          file,
-          selectedPreset.encode,
-          folder
-        );
-
-        const fileName = result.path.split("/").pop()!;
-        const markdownLink = `![[${fileName}]]`;
+        const converted = await convertBlob(file, selectedPreset.encode);
+        const markdownLink = await this.saveForNote(file, converted, encoderFor(selectedPreset.encode.format).extension, activeFile.path);
+        const result = { originalSize: file.size, convertedSize: converted.size };
 
         // Insert link at drop position
         editor.replaceRange(markdownLink, pos);
@@ -492,17 +492,13 @@ export default class WasmImageConverterPlugin extends Plugin {
     // Process each file sequentially
     for (const file of supportedFiles) {
       try {
-        const folder = resolveSaveFolder(this.settings.save);
-
         // Skip animated GIF
         if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
           if (await isAnimatedGif(file)) {
             if (!this.settings.processAnimatedGifs) {
               new Notice(`⚠️ Skipped animated GIF conversion: ${file.name}`);
               try {
-                const savedPath = await saveOriginalFile(this.app, file, folder);
-                const fileName = savedPath.split("/").pop()!;
-                const markdownLink = `![[${fileName}]]`;
+                const markdownLink = await this.saveForNote(file, file, file.name.match(/\.([^.]+)$/)?.[1] ?? 'gif', activeFile.path);
                 editor.replaceRange(markdownLink, cursor);
               } catch (err) {
                 console.error("Failed to save original GIF:", err);
@@ -513,15 +509,9 @@ export default class WasmImageConverterPlugin extends Plugin {
           }
         }
 
-        const result = await saveImageAndInsert(
-          this.app,
-          file,
-          selectedPreset.encode,
-          folder
-        );
-
-        const fileName = result.path.split("/").pop()!;
-        const markdownLink = `![[${fileName}]]`;
+        const converted = await convertBlob(file, selectedPreset.encode);
+        const markdownLink = await this.saveForNote(file, converted, encoderFor(selectedPreset.encode.format).extension, activeFile.path);
+        const result = { originalSize: file.size, convertedSize: converted.size };
 
         // Insert link at cursor position
         editor.replaceRange(markdownLink, cursor);

@@ -1,6 +1,8 @@
 import { App, Modal, Notice, setIcon, TFile } from "obsidian";
-import { EncodeSettings, PluginSettings } from "../settings";
-import { saveImageAndInsert, convertAndReplaceFile, resolveSaveFolder } from "../file-service";
+import { EncodeSettings, PluginSettings, SaveSettings } from "../settings";
+import { embedLink, replaceExisting, saveNew } from "../save/save";
+import { convertBlob } from "../conversion/convert";
+import { encoderFor } from "../conversion/encoders";
 import { decode, DecodedImage } from "../conversion/decode";
 import { analyze, estimateByHeuristic, estimateBySample, ImageStats, SizePrediction } from "../conversion/predict";
 
@@ -8,10 +10,21 @@ import { isAnimatedGif } from "../utils/gif-check";
 import { DropZone } from "./components/drop-zone";
 import { SettingsPanel } from "./components/settings-panel";
 
-export async function openImageConverterModal(app: App, settings: PluginSettings, initialFile: File | null = null, targetTFile: TFile | null = null): Promise<string | undefined> {
+/**
+ * @param sourcePath - note the links are for ("" when none): decides the
+ *   attachment folder in the "obsidian" mode, {note} and the link paths
+ */
+export async function openImageConverterModal(app: App, settings: PluginSettings, sourcePath: string, initialFile: File | null = null, targetTFile: TFile | null = null): Promise<string | undefined> {
     return new Promise((resolve) => {
-        new ImageConverterModal(app, settings, initialFile, targetTFile, resolve).open();
+        new ImageConverterModal(app, settings, sourcePath, initialFile, targetTFile, resolve).open();
     });
+}
+
+/** Save destination as shown in the dialog. */
+function describeDestination(save: SaveSettings, targetTFile: TFile | null): string {
+    if (targetTFile) return `${targetTFile.parent?.path ?? "/"} (in place)`;
+    if (save.destination.mode === "obsidian") return "Obsidian's attachment folder";
+    return `${save.destination.folder.replace(/\/+$/, "")}/`;
 }
 
 /** The single selected file, decoded once and reused by every prediction. */
@@ -23,6 +36,7 @@ interface PredictionSource {
 
 class ImageConverterModal extends Modal {
     private settings: PluginSettings;
+    private sourcePath: string;
     private initialFile: File | null;
     private targetTFile: TFile | null;
     private onResult: (value?: string) => void;
@@ -46,10 +60,11 @@ class ImageConverterModal extends Modal {
     private predictionGeneration = 0;
     private predictionSource: PredictionSource | null = null;
 
-    constructor(app: App, settings: PluginSettings, initialFile: File | null, targetTFile: TFile | null, onResult: (value?: string) => void) {
+    constructor(app: App, settings: PluginSettings, sourcePath: string, initialFile: File | null, targetTFile: TFile | null, onResult: (value?: string) => void) {
         super(app);
         // Read-only here: the panel edits its own copy of the encoding parameters
         this.settings = settings;
+        this.sourcePath = sourcePath;
         this.initialFile = initialFile;
         this.targetTFile = targetTFile;
         this.onResult = onResult;
@@ -127,7 +142,7 @@ class ImageConverterModal extends Modal {
         this.settingsPanel = new SettingsPanel(
             this.settings.presets,
             this.settings.defaultPresetId,
-            resolveSaveFolder(this.settings.save),
+            describeDestination(this.settings.save, this.targetTFile),
             () => this.updatePrediction()
         );
 
@@ -353,12 +368,11 @@ class ImageConverterModal extends Modal {
 
         try {
             const encode = this.settingsPanel.getEncode();
-            const folder = resolveSaveFolder(this.settings.save);
 
             if (this.targetTFile) {
-                await this.runReplaceConversion(encode, folder);
+                await this.runReplaceConversion(encode);
             } else {
-                await this.runInsertConversion(encode, folder);
+                await this.runInsertConversion(encode);
             }
         } catch (error) {
             console.error("Image conversion failed:", error);
@@ -375,25 +389,20 @@ class ImageConverterModal extends Modal {
     }
 
     /** Replace mode (context menu) - single file, overwrites targetTFile. */
-    private async runReplaceConversion(encode: EncodeSettings, folder: string) {
+    private async runReplaceConversion(encode: EncodeSettings) {
         const file = this.selectedFiles[0];
         this.convertBtn.textContent = "Converting...";
 
-        const result = await convertAndReplaceFile(
-            this.app,
-            this.targetTFile!,
-            file,
-            encode,
-            folder
-        );
+        const blob = await convertBlob(file, encode);
+        const result = await replaceExisting(this.app, this.targetTFile!, blob, encoderFor(encode.format).extension);
 
         const originalKB = (result.originalSize / 1024).toFixed(2);
         const convertedKB = (result.convertedSize / 1024).toFixed(2);
         const ratio = (((result.originalSize - result.convertedSize) / result.originalSize) * 100).toFixed(1);
-        new Notice(`✅ Image replaced: ${result.path}\n${originalKB}KB → ${convertedKB}KB (${ratio}% compressed)`);
+        new Notice(`✅ Image replaced: ${result.file.path}\n${originalKB}KB → ${convertedKB}KB (${ratio}% compressed)`);
 
         this.converting = false;
-        this.result = `![[${result.path}]]`;
+        this.result = embedLink(this.app, result.file, this.sourcePath);
         if (this.cancelRequested) {
             // Modal already closed mid-conversion; the file was replaced
             // anyway, so hand the link back to the caller.
@@ -403,8 +412,9 @@ class ImageConverterModal extends Modal {
         }
     }
 
-    /** Insert mode - converts each selected file into the attachment folder. */
-    private async runInsertConversion(encode: EncodeSettings, folder: string) {
+    /** Insert mode - converts each selected file into a new file. */
+    private async runInsertConversion(encode: EncodeSettings) {
+        const extension = encoderFor(encode.format).extension;
         const links: string[] = [];
         const errors: string[] = [];
         let totalOriginalSize = 0;
@@ -428,16 +438,16 @@ class ImageConverterModal extends Modal {
             }
 
             try {
-                const result = await saveImageAndInsert(
-                    this.app,
-                    file,
-                    encode,
-                    folder
-                );
+                const blob = await convertBlob(file, encode);
+                const saved = await saveNew(this.app, blob, extension, {
+                    ...this.settings.save,
+                    sourcePath: this.sourcePath,
+                    originalName: file.name,
+                });
 
-                links.push(`![[${result.path}]]`);
-                totalOriginalSize += result.originalSize;
-                totalConvertedSize += result.convertedSize;
+                links.push(embedLink(this.app, saved, this.sourcePath));
+                totalOriginalSize += file.size;
+                totalConvertedSize += blob.size;
             } catch (error) {
                 console.error(`Failed to convert ${file.name}:`, error);
                 errors.push(file.name);

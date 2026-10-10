@@ -5,7 +5,7 @@ export class SettingsPanel {
     element: HTMLDivElement;
     private presets: Preset[];
     private defaultPresetId: string;
-    private folder: string;
+    private destinationLabel: string;
     /** Working copy edited by the inputs; presets themselves are never mutated. */
     private encode: EncodeSettings;
     private onChange: () => void;
@@ -23,14 +23,14 @@ export class SettingsPanel {
     /**
      * @param presets - presets to choose from
      * @param defaultPresetId - preset selected initially
-     * @param folder - folder shown as the save destination
+     * @param destinationLabel - save destination shown below the settings
      */
-    constructor(presets: Preset[], defaultPresetId: string, folder: string, onChange: () => void) {
+    constructor(presets: Preset[], defaultPresetId: string, destinationLabel: string, onChange: () => void) {
         this.presets = presets;
         const initial = resolvePreset({ presets, defaultPresetId }, defaultPresetId);
         this.defaultPresetId = initial?.id ?? defaultPresetId;
         this.encode = cloneEncode(initial?.encode ?? presets[0].encode);
-        this.folder = folder;
+        this.destinationLabel = destinationLabel;
         this.onChange = onChange;
         this.element = document.createElement("div");
         this.render();
@@ -114,7 +114,7 @@ export class SettingsPanel {
         // Folder Info
         this.folderInfo = document.createElement("div");
         this.folderInfo.className = "wasm-image-modal__folder-info";
-        this.folderInfo.textContent = `Save to: ${this.folder}/`;
+        this.folderInfo.textContent = `Save to: ${this.destinationLabel}`;
         this.element.appendChild(this.folderInfo);
 
         // Set initial quality state based on format

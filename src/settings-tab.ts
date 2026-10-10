@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting, Modal } from "obsidian";
 import WasmImageConverterPlugin from "./main";
-import { Preset, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, builtinPresets, createPresetId, repairPresetRefs } from "./settings";
+import { Preset, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, DEFAULT_NAME_TEMPLATE, builtinPresets, createPresetId, repairPresetRefs } from "./settings";
+import { newFileBasename } from "./save/save";
 import { ENCODER_LIST, encoderFor } from "./conversion/encoders";
 
 export class WasmImageConverterSettingTab extends PluginSettingTab {
@@ -69,6 +70,59 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
     );
   }
 
+  /** Save destination and file name of new images (not part of presets). */
+  private renderSaveSettings(el: HTMLElement): void {
+    const save = this.plugin.settings.save;
+
+    new Setting(el)
+      .setName("Save location")
+      .setDesc("Where new images are saved. Converting an existing file keeps its folder and name.")
+      .addDropdown(dropdown => dropdown
+        .addOption("obsidian", "Same as Obsidian's attachment setting")
+        .addOption("folder", "Fixed folder")
+        .setValue(save.destination.mode)
+        .onChange(async (value) => {
+          save.destination.mode = value === "folder" ? "folder" : "obsidian";
+          folderSetting.settingEl.toggle(save.destination.mode === "folder");
+          await this.plugin.saveSettings();
+        }));
+
+    const folderSetting = new Setting(el)
+      .setName("Save folder")
+      .setDesc("Created when missing. Use / for the vault root.")
+      .addText(text => text
+        .setPlaceholder(DEFAULT_FOLDER)
+        .setValue(save.destination.folder)
+        .onChange(async (value) => {
+          save.destination.folder = value.trim() || DEFAULT_FOLDER;
+          await this.plugin.saveSettings();
+        }));
+    folderSetting.settingEl.toggle(save.destination.mode === "folder");
+
+    const preview = () => `Example: ${newFileBasename({
+      ...save,
+      sourcePath: "Notes/My note.md",
+      originalName: "photo.png",
+    }, 123456)}.webp`;
+
+    const templateSetting = new Setting(el)
+      .setName("File name")
+      .addText(text => text
+        .then(t => t.inputEl.addClass("wasm-image-settings__template"))
+        .setPlaceholder(DEFAULT_NAME_TEMPLATE)
+        .setValue(save.nameTemplate)
+        .onChange(async (value) => {
+          save.nameTemplate = value.trim() || DEFAULT_NAME_TEMPLATE;
+          exampleEl.setText(preview());
+          await this.plugin.saveSettings();
+        }));
+    templateSetting.descEl.createDiv({
+      text: "{original} source file name, {note} note name, {date:YYYYMMDD} date in moment format, {size} converted size in KB. " +
+        "Empty values and the separators they leave are removed; a number is added when the name is taken.",
+    });
+    const exampleEl = templateSetting.descEl.createDiv({ text: preview() });
+  }
+
   private renderGeneralTab(el: HTMLElement): void {
     const generalDesc = el.createEl("div", {
       cls: "setting-item-description",
@@ -124,16 +178,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
         });
       });
 
-    new Setting(el)
-      .setName("Save folder")
-      .setDesc("Folder where converted images are saved")
-      .addText(text => text
-        .setPlaceholder(DEFAULT_FOLDER)
-        .setValue(this.plugin.settings.save.destination.folder)
-        .onChange(async (value) => {
-          this.plugin.settings.save.destination.folder = value || DEFAULT_FOLDER;
-          await this.plugin.saveSettings();
-        }));
+    this.renderSaveSettings(el);
 
     el.createEl("h4", { text: "Batch or Auto convert target extensions" });
 
