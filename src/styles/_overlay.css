@@ -1,0 +1,162 @@
+/* ==========================================================================
+   Overlay (src/ui/overlay/overlay-shell.ts)
+
+   The window of our dialogs: in the middle of the window, and a bottom
+   sheet on a phone (.is-phone on the body). The same DOM serves both; CSS
+   switches them. Ported from obsidian-task-viewer's _overlay.css.
+   ========================================================================== */
+
+/* Open: the sheet slides up the whole height in 150ms as Obsidian's own
+   mobile menus do; the panel itself does not fade, the backdrop does.
+   Close uses keyframes of its own: an animation restarts only when its
+   name changes. */
+@keyframes wasm-image-overlay-fade      { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wasm-image-overlay-fade-out  { from { opacity: 1; } to { opacity: 0; } }
+@keyframes wasm-image-overlay-pop       { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes wasm-image-overlay-pop-out   { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+@keyframes wasm-image-overlay-slide     { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes wasm-image-overlay-slide-out { from { transform: none; } to { transform: translateY(100%); } }
+
+/* On Obsidian's modal layer: its suggest lists, menus and notices come over it */
+.wasm-image-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--layer-modal, 50);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wasm-image-overlay__backdrop {
+    position: absolute;
+    inset: 0;
+    background: var(--background-modifier-cover);
+    animation: wasm-image-overlay-fade 150ms ease-out;
+}
+
+.wasm-image-overlay__panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(var(--wimg-modal-max-width), calc(100vw - 32px));
+    max-height: calc(100% - 64px);
+    padding: 20px 0;
+    background: var(--modal-background, var(--wimg-bg-primary));
+    border: var(--modal-border-width, 1px) solid var(--modal-border-color, var(--wimg-border));
+    border-radius: var(--modal-radius, 16px);
+    box-shadow: var(--shadow-l);
+    overflow: hidden;
+    animation: wasm-image-overlay-pop 150ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* The panel holds the focus when no field is named; it is a surface, not a control */
+.wasm-image-overlay__panel:focus {
+    outline: none;
+}
+
+.wasm-image-overlay__title {
+    flex-shrink: 0;
+    margin: 0 56px 16px 24px;
+    font-size: var(--font-ui-large);
+    font-weight: var(--font-semibold, 600);
+    line-height: 1.3;
+}
+
+/* The horizontal space is the body's, not the panel's: overflow-y: auto
+   clips the overflow on both axes, and a field touching the clip edge
+   loses its focus ring */
+.wasm-image-overlay__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 24px;
+}
+
+/* Shown on a phone only */
+.wasm-image-overlay__handle {
+    display: none;
+    touch-action: none;
+}
+
+.wasm-image-overlay__handle::after {
+    content: '';
+    display: block;
+    width: 67px;
+    height: 4px;
+    border-radius: 18px;
+    background: var(--text-faint);
+    margin: 8px auto 4px;
+}
+
+.wasm-image-overlay__close {
+    position: absolute;
+    top: 14px;
+    inset-inline-end: 14px;
+}
+
+/* ----- Phone: a bottom sheet ----- */
+
+.is-phone .wasm-image-overlay {
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+}
+
+.is-phone .wasm-image-overlay__backdrop {
+    animation: wasm-image-overlay-fade 150ms ease-in-out;
+}
+
+.is-phone .wasm-image-overlay__panel {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100% - 120px);
+    padding: 0;
+    border: none;
+    border-radius: var(--touch-radius-xs, 30px) var(--touch-radius-xs, 30px) 0 0;
+    animation: wasm-image-overlay-slide 150ms cubic-bezier(0, 0.55, 0.45, 1);
+}
+
+.is-phone .wasm-image-overlay__handle {
+    display: block;
+}
+
+.is-phone .wasm-image-overlay__close {
+    display: none;
+}
+
+.is-phone .wasm-image-overlay__title {
+    margin: 4px 16px 12px;
+    text-align: center;
+}
+
+.is-phone .wasm-image-overlay__body {
+    padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ----- Closing ----- */
+
+/* Only the panel goes inert: the backdrop stays hit-testable, or the
+   pointerup and the click of the closing tap would reach what is behind */
+.wasm-image-overlay.is-closing .wasm-image-overlay__panel {
+    pointer-events: none;
+}
+
+.wasm-image-overlay.is-closing .wasm-image-overlay__backdrop {
+    animation: wasm-image-overlay-fade-out 120ms ease-in forwards;
+}
+
+.wasm-image-overlay.is-closing .wasm-image-overlay__panel {
+    animation: wasm-image-overlay-pop-out 120ms ease-in forwards;
+}
+
+.is-phone .wasm-image-overlay.is-closing .wasm-image-overlay__backdrop {
+    animation: wasm-image-overlay-fade-out 150ms ease-in-out forwards;
+}
+
+.is-phone .wasm-image-overlay.is-closing .wasm-image-overlay__panel {
+    animation: wasm-image-overlay-slide-out 150ms ease-in-out forwards;
+}
+
+/* prefers-reduced-motion is not followed on purpose: Obsidian's own
+   bottom sheets do not follow it, and the sheet would stand still while
+   Obsidian's move */

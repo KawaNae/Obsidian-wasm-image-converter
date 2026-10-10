@@ -23,7 +23,7 @@ export interface ConverterRequest {
     target?: TFile | null;
 }
 
-/** The window the body sits in: a Modal now, a bottom sheet later. */
+/** The window the body sits in (OverlayShell). */
 export interface ConverterHost {
     close(): void;
 }

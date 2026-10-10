@@ -1,9 +1,10 @@
-import { App, Modal, Notice, Setting, TFile, TFolder } from "obsidian";
+import { App, Notice, Setting, TFile, TFolder } from "obsidian";
 import { EncodeSettings, PluginSettings, Preset, resolvePreset } from "../settings";
 import { convertBlob } from "../conversion/convert";
 import { encoderFor } from "../conversion/encoders";
 import { replaceExisting } from "../save/save";
 import { isAnimatedGif } from "../utils/gif-check";
+import { OverlayShell } from "../ui/overlay/overlay-shell";
 import { batchSummary, batchTargets, countByExtension, emptyTally, isLargerAfterConversion } from "./targets";
 
 /**
@@ -23,7 +24,7 @@ export async function runBatchConvert(app: App, settings: PluginSettings, folder
     return;
   }
 
-  const preset = await new BatchConvertDialog(app, settings, scopeLabel, targets).choose();
+  const preset = await chooseBatchPreset(app, settings, scopeLabel, targets);
   if (!preset) return;
 
   const tally = emptyTally(targets.length);
@@ -104,74 +105,60 @@ class ProgressNotice {
   }
 }
 
-/** Confirms a batch convert and chooses its preset. */
-class BatchConvertDialog extends Modal {
-  private chosen: Preset | null = null;
-  private resolve: (preset: Preset | null) => void = () => {};
+/**
+ * Confirms a batch convert and chooses its preset, in the same window as
+ * the converter dialog (a bottom sheet on a phone). Resolves with the
+ * preset, or null when the dialog was closed otherwise.
+ */
+function chooseBatchPreset(app: App, settings: PluginSettings, scopeLabel: string, targets: TFile[]): Promise<Preset | null> {
+  return new Promise(resolve => {
+    const shell = new OverlayShell();
+    let chosen: Preset | null = null;
+    shell.open({
+      title: "Batch Convert Images",
+      panelClass: "wasm-image-batch-dialog",
+      keymap: app.keymap,
+      onClose: () => resolve(chosen),
+      build: (contentEl) => {
+        const counts = countByExtension(targets).map(([ext, n]) => `${n} × ${ext}`).join(", ");
+        contentEl.createEl("p", { text: `${targets.length} images in ${scopeLabel}: ${counts}` });
 
-  constructor(
-    app: App,
-    private readonly settings: PluginSettings,
-    private readonly scopeLabel: string,
-    private readonly targets: TFile[]
-  ) {
-    super(app);
-  }
+        let preset = resolvePreset(settings, settings.autoConvertPresetId) ?? null;
+        const setting = new Setting(contentEl)
+          .setName("Preset")
+          .addDropdown(dropdown => {
+            for (const p of settings.presets) dropdown.addOption(p.id, p.name);
+            if (preset) dropdown.setValue(preset.id);
+            dropdown.onChange(id => {
+              preset = settings.presets.find(p => p.id === id) ?? null;
+              describe();
+            });
+          });
+        const describe = () => setting.setDesc(preset ? describeEncode(preset.encode) : "");
+        describe();
 
-  choose(): Promise<Preset | null> {
-    return new Promise(resolve => {
-      this.resolve = resolve;
-      this.open();
-    });
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    this.titleEl.setText("Batch Convert Images");
-
-    const counts = countByExtension(this.targets).map(([ext, n]) => `${n} × ${ext}`).join(", ");
-    contentEl.createEl("p", { text: `${this.targets.length} images in ${this.scopeLabel}: ${counts}` });
-
-    let preset = resolvePreset(this.settings, this.settings.autoConvertPresetId) ?? null;
-    const setting = new Setting(contentEl)
-      .setName("Preset")
-      .addDropdown(dropdown => {
-        for (const p of this.settings.presets) dropdown.addOption(p.id, p.name);
-        if (preset) dropdown.setValue(preset.id);
-        dropdown.onChange(id => {
-          preset = this.settings.presets.find(p => p.id === id) ?? null;
-          describe();
+        const notes = contentEl.createEl("ul", { cls: "wasm-image-batch-dialog__notes" });
+        notes.createEl("li", { text: "Each image is replaced in place: same folder and name, new extension. Images that would get larger are skipped." });
+        if (!settings.processAnimatedGifs && targets.some(f => f.extension.toLowerCase() === "gif")) {
+          notes.createEl("li", { text: "Animated GIFs are skipped." });
+        }
+        notes.createEl("li", {
+          text: "If \"Automatically update internal links\" is off in Obsidian's Files and links settings, " +
+            "Obsidian asks for every renamed image whether to update its links.",
         });
-      });
-    const describe = () => setting.setDesc(preset ? describeEncode(preset.encode) : "");
-    describe();
 
-    const notes = contentEl.createEl("ul", { cls: "wasm-image-batch-dialog__notes" });
-    notes.createEl("li", { text: "Each image is replaced in place: same folder and name, new extension. Images that would get larger are skipped." });
-    if (!this.settings.processAnimatedGifs && this.targets.some(f => f.extension.toLowerCase() === "gif")) {
-      notes.createEl("li", { text: "Animated GIFs are skipped." });
-    }
-    notes.createEl("li", {
-      text: "If \"Automatically update internal links\" is off in Obsidian's Files and links settings, " +
-        "Obsidian asks for every renamed image whether to update its links.",
+        new Setting(contentEl)
+          .addButton(button => button
+            .setButtonText("Cancel")
+            .onClick(() => shell.close()))
+          .addButton(button => button
+            .setButtonText("Convert")
+            .setCta()
+            .onClick(() => {
+              chosen = preset;
+              shell.close();
+            }));
+      },
     });
-
-    new Setting(contentEl)
-      .addButton(button => button
-        .setButtonText("Cancel")
-        .onClick(() => this.close()))
-      .addButton(button => button
-        .setButtonText("Convert")
-        .setCta()
-        .onClick(() => {
-          this.chosen = preset;
-          this.close();
-        }));
-  }
-
-  onClose() {
-    this.contentEl.empty();
-    this.resolve(this.chosen);
-  }
+  });
 }

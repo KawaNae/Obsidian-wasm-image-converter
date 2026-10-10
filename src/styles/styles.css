@@ -2,18 +2,6 @@
    Modal
    ========================================================================== */
 
-.wasm-image-modal {
-    width: min(var(--wimg-modal-max-width), 90vw);
-    max-width: var(--wimg-modal-max-width);
-    max-height: 90vh;
-    padding: 20px;
-}
-
-.wasm-image-modal__title {
-    margin-top: 0;
-    margin-bottom: 15px;
-}
-
 .wasm-image-modal__content {
     margin-bottom: 20px;
 }

@@ -169,7 +169,7 @@ const copyStaticFiles = {
 
         // Concatenate CSS files: _variables.css + styles.css
         const cssDir = "src/styles";
-        const cssFiles = ["_variables.css", "styles.css"];
+        const cssFiles = ["_variables.css", "_overlay.css", "styles.css"];
         let cssContent = "";
         for (const file of cssFiles) {
           const filePath = path.join(cssDir, file);

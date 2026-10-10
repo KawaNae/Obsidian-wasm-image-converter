@@ -1,12 +1,14 @@
 import { Notice, Plugin, MarkdownView, TFile, TFolder, Menu } from "obsidian";
 import { PluginSettings, createDefaultSettings, resolvePreset } from "./settings";
 import { migrateSettings } from "./settings-migration";
-import { openImageConverterModal } from "./ui/image-converter-modal";
+import { openConverterDialog } from "./ui/converter-dialog";
 import { WasmImageConverterSettingTab } from "./settings-tab";
 import { initWasmLoaderContext } from "./conversion/wasm-loader";
 import { encoderFor } from "./conversion/encoders";
 import { AutoConverter } from "./entry/auto-convert";
 import { runBatchConvert } from "./entry/batch-convert";
+import { closeAllOverlays } from "./ui/overlay/overlay-registry";
+import { untrackAllKeyboards } from "./ui/overlay/keyboard-state";
 
 /** Extensions the file menu offers to convert. */
 const FILE_MENU_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp"];
@@ -45,6 +47,16 @@ export default class WasmImageConverterPlugin extends Plugin {
     );
   }
 
+  /**
+   * Our dialogs live on the document's body, which no teardown of
+   * Obsidian's reaches: close what is still open, and stop following the
+   * on-screen keyboard.
+   */
+  onunload() {
+    closeAllOverlays();
+    untrackAllKeyboards();
+  }
+
   async loadSettings() {
     const result = migrateSettings(await this.loadData());
     this.settings = result.settings;
@@ -71,7 +83,7 @@ export default class WasmImageConverterPlugin extends Plugin {
   private async openConverterForActiveNote() {
     try {
       const active = this.app.workspace.getActiveFile();
-      const link = await openImageConverterModal(this.app, this.settings, { sourcePath: active?.path ?? "" });
+      const link = await openConverterDialog(this.app, this.settings, { sourcePath: active?.path ?? "" });
       if (!link) return;
 
       if (active) {
@@ -107,7 +119,7 @@ export default class WasmImageConverterPlugin extends Plugin {
           const extension = file.extension.toLowerCase();
           const imageFile = new File([data], file.name, { type: `image/${extension === "jpg" ? "jpeg" : extension}` });
           const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
-          const link = await openImageConverterModal(this.app, this.settings, { sourcePath, initialFile: imageFile, target: file });
+          const link = await openConverterDialog(this.app, this.settings, { sourcePath, initialFile: imageFile, target: file });
           if (link) {
             // There may be no editor to insert into; offer the link instead
             await navigator.clipboard.writeText(link);

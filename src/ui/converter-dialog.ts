@@ -1,35 +1,23 @@
-import { App, Modal } from "obsidian";
+import { App } from "obsidian";
 import { PluginSettings } from "../settings";
 import { ConverterBody, ConverterRequest } from "./converter-body";
+import { OverlayShell } from "./overlay/overlay-shell";
 
 /**
- * Opens the converter dialog and resolves with the embed links of the saved
- * images (separated by an empty line), or undefined when nothing was converted.
+ * Opens the converter dialog (a bottom sheet on a phone) and resolves with
+ * the embed links of the saved images, separated by an empty line, or
+ * undefined when nothing was converted.
  */
-export function openImageConverterModal(app: App, settings: PluginSettings, request: ConverterRequest): Promise<string | undefined> {
+export function openConverterDialog(app: App, settings: PluginSettings, request: ConverterRequest): Promise<string | undefined> {
     return new Promise((resolve) => {
-        new ImageConverterModal(app, settings, request, resolve).open();
+        const shell = new OverlayShell();
+        const body = new ConverterBody(app, settings, request, shell, resolve);
+        shell.open({
+            title: "Image Converter",
+            panelClass: "wasm-image-modal",
+            keymap: app.keymap,
+            build: (bodyEl) => body.build(bodyEl),
+            onClose: () => body.dispose(),
+        });
     });
-}
-
-/** The window of the converter dialog; its content is ConverterBody. */
-class ImageConverterModal extends Modal {
-    private body: ConverterBody;
-
-    constructor(app: App, settings: PluginSettings, request: ConverterRequest, onResult: (value?: string) => void) {
-        super(app);
-        this.body = new ConverterBody(app, settings, request, this, onResult);
-    }
-
-    onOpen() {
-        this.modalEl.addClass("wasm-image-modal");
-        this.titleEl.setText("Image Converter");
-        this.contentEl.empty();
-        this.body.build(this.contentEl);
-    }
-
-    onClose() {
-        this.body.dispose();
-        this.contentEl.empty();
-    }
 }
