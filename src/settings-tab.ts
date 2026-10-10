@@ -1,6 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting, Modal } from "obsidian";
 import WasmImageConverterPlugin from "./main";
-import { Preset, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, DEFAULT_NAME_TEMPLATE, builtinPresets, createPresetId, repairPresetRefs } from "./settings";
+import { Preset, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, DEFAULT_NAME_TEMPLATE, builtinEncode, builtinPresets, createPresetId, encodeEquals, repairPresetRefs } from "./settings";
 import { newFileBasename } from "./save/save";
 import { ENCODER_LIST, encoderFor } from "./conversion/encoders";
 
@@ -152,7 +152,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName("Auto-convert on drag & drop")
-      .setDesc("Automatically convert images when dragging and dropping them into the editor (desktop only)")
+      .setDesc("Automatically convert images dropped or pasted into the editor (on mobile: pasted images)")
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.enableAutoConvert)
         .onChange(async (value) => {
@@ -162,7 +162,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName("Auto-convert preset")
-      .setDesc("Which preset to use for automatic conversion on drag & drop")
+      .setDesc("Which preset to use for automatic conversion on drag & drop and paste. Batch convert asks for its preset each time.")
       .addDropdown(dropdown => {
         this.plugin.settings.presets.forEach((preset) => {
           dropdown.addOption(preset.id, preset.name);
@@ -276,8 +276,9 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
     this.plugin.settings.presets.forEach((preset, index) => {
       const isBuiltin = preset.builtin;
       const { format, quality, resize, grayscale } = preset.encode;
+      const factory = isBuiltin ? builtinEncode(preset.id) : undefined;
 
-      new Setting(el)
+      const setting = new Setting(el)
         .setName(preset.name)
         .setDesc(`Converter: ${encoderFor(format).label}, ` +
           `Quality: ${(quality * 100).toFixed(0)}%, ` +
@@ -287,16 +288,27 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
           .setButtonText("Edit")
           .onClick(() => {
             new PresetEditModal(this.app, this.plugin, preset, () => this.display()).open();
-          }))
-        .addButton(button => button
-          .setButtonText("Delete")
-          .setDisabled(isBuiltin)
+          }));
+      if (factory) {
+        setting.addButton(button => button
+          .setButtonText("Restore built-in")
+          .setTooltip("Restore the values this built-in preset came with")
+          .setDisabled(encodeEquals(preset.encode, factory))
           .onClick(async () => {
-            this.plugin.settings.presets.splice(index, 1);
-            repairPresetRefs(this.plugin.settings);
+            preset.encode = factory;
             await this.plugin.saveSettings();
             this.display();
           }));
+      }
+      setting.addButton(button => button
+        .setButtonText("Delete")
+        .setDisabled(isBuiltin)
+        .onClick(async () => {
+          this.plugin.settings.presets.splice(index, 1);
+          repairPresetRefs(this.plugin.settings);
+          await this.plugin.saveSettings();
+          this.display();
+        }));
     });
   }
 
