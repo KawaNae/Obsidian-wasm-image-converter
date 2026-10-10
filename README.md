@@ -15,6 +15,7 @@ A fast, efficient image conversion plugin for Obsidian that converts images to W
 - **Drag & Drop Auto-Conversion**: Automatically convert images by simply dropping them into the editor (desktop)
 - **Paste Auto-Conversion**: Automatically convert images pasted with Ctrl+V (desktop and mobile; on mobile the pasted file is always named `image.png`)
 - Several images are inserted at once, in their order, one link per line
+- Other files dropped or pasted together with the images (PDFs, images of other formats) are saved as they are, in Obsidian's attachment location, and linked in their place
 - **Preset Selection**: Pre-select presets for use during auto-conversion
 
 ### 🎛️ Customizable Settings
@@ -25,7 +26,7 @@ A fast, efficient image conversion plugin for Obsidian that converts images to W
 - **Save Location**: Follow Obsidian's attachment setting or use a fixed folder, with a file name template
 
 ### 📋 Convenient Input Methods
-- **Modal UI**: Convert with detailed settings configuration. The name field holds the name template (an example of the expanded name is shown below it), and the folder field suggests the vault's folders; a folder typed there applies to that conversion only. A preset whose values were changed shows "(modified)"
+- **Modal UI**: Convert with detailed settings configuration. The name field holds the name template (an example of the expanded name is shown below it), and the folder field suggests the vault's folders; a folder typed there applies to that conversion only. When the save location follows Obsidian's setting, the folder field is left empty and Obsidian decides the folder when saving. A preset whose values were changed shows "(modified)"
 - **File menu**: "Convert to ...", which replaces the file in place; changing the name or folder in the dialog renames or moves it
 - **Batch convert**: the "Batch Convert Images" command (whole vault) or "Batch convert images in this folder" in the folder menu. The preset is chosen in the confirmation dialog; images that would get larger are skipped, and one notice shows the progress with a cancel button
 - **Clipboard Support**: Paste images directly
