@@ -1,4 +1,5 @@
-import { AbstractInputSuggest, App, TFolder } from "obsidian";
+import { App, TFolder } from "obsidian";
+import { ShownSuggest } from "./shown-suggest";
 
 /**
  * The vault's folders under a text field, suggested by their path ("/" for
@@ -6,7 +7,7 @@ import { AbstractInputSuggest, App, TFolder } from "obsidian";
  * Modeled on obsidian-task-viewer's FolderSuggest; it lists folders with
  * getAllLoadedFiles because Vault.getAllFolders needs Obsidian 1.6.6.
  */
-export class FolderSuggest extends AbstractInputSuggest<TFolder> {
+export class FolderSuggest extends ShownSuggest<TFolder> {
     constructor(app: App, private readonly inputEl: HTMLInputElement) {
         super(app, inputEl);
     }
@@ -22,7 +23,7 @@ export class FolderSuggest extends AbstractInputSuggest<TFolder> {
         el.setText(folder.path);
     }
 
-    selectSuggestion(folder: TFolder, _evt: MouseEvent | KeyboardEvent): void {
+    protected pick(folder: TFolder): void {
         this.inputEl.value = folder.path;
         this.inputEl.trigger("input");
         this.close();
