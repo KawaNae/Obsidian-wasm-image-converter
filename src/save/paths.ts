@@ -57,29 +57,3 @@ export function nameSet(names: Iterable<string>): (name: string) => boolean {
   for (const n of names) set.add(n.toLowerCase());
   return name => set.has(name.toLowerCase());
 }
-
-/**
- * Folder that Obsidian's "Default location for new attachments" setting
- * gives for a note, as Vault.getAvailablePathForAttachments resolves it:
- * "/" is the vault root, "." or "./" the note's folder, "./sub" a subfolder
- * of the note's folder, anything else a vault path. Returns "" for the root.
- * Without a note, the note's folder is the root.
- *
- * Unlike fileManager.getAvailablePathForAttachment this creates nothing, so
- * the dialog can show the folder before anything is saved. Plugins that
- * patch the attachment lookup are not reflected here.
- *
- * @param notePath - path of the note, or null when there is none
- */
-export function attachmentFolderFor(setting: string, notePath: string | null): string {
-  const noteFolder = notePath === null ? "" : parentPath(notePath);
-  let folder: string;
-  if (setting === "." || setting === "./") {
-    folder = noteFolder;
-  } else if (setting.startsWith("./")) {
-    folder = joinPath(noteFolder, setting.slice(2));
-  } else {
-    folder = setting;
-  }
-  return folder.replace(/^\/+|\/+$/g, "");
-}

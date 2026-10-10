@@ -4,7 +4,7 @@
 import { App, TFile, TFolder, moment, normalizePath } from "obsidian";
 import { SaveSettings } from "../settings";
 import { DateFormatter, resolveName } from "./name";
-import { attachmentFolderFor, availableName, fileName, joinPath, nameSet, parentPath, replacementName } from "./paths";
+import { availableName, fileName, joinPath, nameSet, parentPath, replacementName } from "./paths";
 
 // The typings declare `moment` as the module namespace, which TypeScript
 // does not consider callable; at runtime it is the moment function.
@@ -153,20 +153,6 @@ export async function replaceExisting(
   }
 
   return { file, originalSize, convertedSize: blob.size };
-}
-
-/**
- * The folder Obsidian's attachment setting gives for the note at
- * `sourcePath`, "" for the root. Shown in the dialog before saving, so it
- * must not create the folder as fileManager.getAvailablePathForAttachment
- * does. There is no public API for this: the setting is read with the
- * undocumented Vault.getConfig, and null is returned when that is missing.
- */
-export function attachmentFolder(app: App, sourcePath: string): string | null {
-  const vault = app.vault as unknown as { getConfig?: (key: string) => unknown };
-  if (typeof vault.getConfig !== "function") return null;
-  const setting = vault.getConfig("attachmentFolderPath");
-  return attachmentFolderFor(typeof setting === "string" ? setting : "/", sourcePath || null);
 }
 
 /**

@@ -1,6 +1,6 @@
 import { App, Notice, setIcon, TFile } from "obsidian";
 import { EncodeSettings, PluginSettings } from "../settings";
-import { attachmentFolder, embedLink, formatDateWithMoment, replaceExisting, ReplaceTarget, saveNew } from "../save/save";
+import { embedLink, formatDateWithMoment, replaceExisting, ReplaceTarget, saveNew } from "../save/save";
 import { resolveName } from "../save/name";
 import { convert, convertBlob } from "../conversion/convert";
 import { encoderFor } from "../conversion/encoders";
@@ -173,22 +173,18 @@ export class ConverterBody {
 
     /**
      * Initial values: the replaced file's own name and folder, or the name
-     * template and the folder the save destination resolves to.
+     * template and the configured fixed folder. In the "obsidian" mode the
+     * folder field stays empty: getAvailablePathForAttachment decides the
+     * folder when saving, which also lets attachment plugins take part.
      */
     private createSaveFields(): SaveFields {
         const onChange = () => this.updateExample();
         if (this.target) {
             return new SaveFields(this.app, this.target.basename, displayFolder(this.target.parent?.path ?? ""), "", onChange);
         }
-        const save = this.settings.save;
-        let folder: string;
-        if (save.destination.mode === "folder") {
-            folder = displayFolder(save.destination.folder);
-        } else {
-            const resolved = attachmentFolder(this.app, this.sourcePath);
-            folder = resolved === null ? "" : displayFolder(resolved);
-        }
-        return new SaveFields(this.app, save.nameTemplate, folder, "Obsidian's attachment folder", onChange);
+        const { destination, nameTemplate } = this.settings.save;
+        const folder = destination.mode === "folder" ? displayFolder(destination.folder) : "";
+        return new SaveFields(this.app, nameTemplate, folder, "Obsidian's attachment folder", onChange);
     }
 
     private setInputsDisabled(disabled: boolean) {

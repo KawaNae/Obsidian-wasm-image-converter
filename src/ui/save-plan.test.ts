@@ -40,6 +40,11 @@ describe("planNewFile", () => {
         expect(planNewFile(fields(), obsidian)).toEqual({ destination: obsidian.destination, nameTemplate: "IMG-{size}" });
     });
 
+    it("leaves the folder to Obsidian while the empty field is untouched", () => {
+        const untouched = fields({ folder: "", initialFolder: "" });
+        expect(planNewFile(untouched, obsidian).destination).toEqual(obsidian.destination);
+    });
+
     it("saves to a typed folder as a fixed folder, for this conversion only", () => {
         const plan = planNewFile(fields({ folder: "Notes/img/", name: "{note}" }), obsidian);
         expect(plan).toEqual({ destination: { mode: "folder", folder: "Notes/img" }, nameTemplate: "{note}" });

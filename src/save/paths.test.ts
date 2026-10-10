@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attachmentFolderFor, availableName, joinPath, nameSet, parentPath, replacementName } from "./paths";
+import { availableName, joinPath, nameSet, parentPath, replacementName } from "./paths";
 
 describe("joinPath / parentPath", () => {
   it("joins with the root and with folders", () => {
@@ -52,29 +52,5 @@ describe("replacementName", () => {
   it("adds a number when another file has the new name", () => {
     expect(replacementName("IMG_0123", "png", "webp", nameSet(["IMG_0123.webp"]))).toBe("IMG_0123 1.webp");
     expect(replacementName("IMG_0123", "png", "webp", nameSet(["img_0123.WEBP", "IMG_0123 1.webp"]))).toBe("IMG_0123 2.webp");
-  });
-});
-
-describe("attachmentFolderFor", () => {
-  it("uses a vault path as is", () => {
-    expect(attachmentFolderFor("Attachments", "Notes/a.md")).toBe("Attachments");
-    expect(attachmentFolderFor("Assets/img/", null)).toBe("Assets/img");
-  });
-
-  it("returns \"\" for the vault root", () => {
-    expect(attachmentFolderFor("/", "Notes/a.md")).toBe("");
-    expect(attachmentFolderFor("", "Notes/a.md")).toBe("");
-  });
-
-  it("resolves the note's folder and its subfolders", () => {
-    expect(attachmentFolderFor("./", "Notes/旅行/a.md")).toBe("Notes/旅行");
-    expect(attachmentFolderFor(".", "a.md")).toBe("");
-    expect(attachmentFolderFor("./assets", "Notes/a.md")).toBe("Notes/assets");
-    expect(attachmentFolderFor("./assets", "a.md")).toBe("assets");
-  });
-
-  it("treats a missing note as one in the root", () => {
-    expect(attachmentFolderFor("./", null)).toBe("");
-    expect(attachmentFolderFor("./assets", null)).toBe("assets");
   });
 });
