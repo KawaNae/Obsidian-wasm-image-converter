@@ -22,6 +22,29 @@ export function isAutoConvertTarget(file: IncomingFile, extensions: readonly str
   return file.type.startsWith("image/") && extensions.some(ext => name.endsWith(`.${ext}`));
 }
 
+/**
+ * What auto-convert does with a dropped or pasted file: "convert" a target
+ * image, or "attach" any other file as it is, under its own name.
+ */
+export type IncomingAction = "convert" | "attach";
+
+/**
+ * The action for each file of a drop or paste, in the order of the files.
+ * Null when no file is a target image: then the event is left to Obsidian.
+ * Once auto-convert takes the event over, the other files are attached as
+ * Obsidian would, so that none of them is lost.
+ */
+export function planIncoming<T extends IncomingFile>(
+  files: readonly T[],
+  extensions: readonly string[]
+): { file: T; action: IncomingAction }[] | null {
+  const plan = files.map(file => ({
+    file,
+    action: (isAutoConvertTarget(file, extensions) ? "convert" : "attach") as IncomingAction,
+  }));
+  return plan.some(p => p.action === "convert") ? plan : null;
+}
+
 /** Whether an incoming file may be an (animated) GIF. */
 export function isGifFile(file: IncomingFile): boolean {
   return file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif");

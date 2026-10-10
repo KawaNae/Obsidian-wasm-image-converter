@@ -77,6 +77,19 @@ export function newFileBasename(context: NewFileContext, sizeBytes: number): str
 }
 
 /**
+ * Creates a file named `name` (with extension) where Obsidian's attachment
+ * setting puts attachments of the note at `sourcePath`. Obsidian also avoids
+ * duplicate names (fileManager.getAvailablePathForAttachment).
+ */
+async function createAttachment(app: App, name: string, data: ArrayBuffer, sourcePath: string): Promise<TFile> {
+  const path = await app.fileManager.getAvailablePathForAttachment(name, sourcePath || undefined);
+  // Obsidian creates the folder itself, but attachment plugins that patch
+  // the lookup may not (Custom Attachment Location defers it to the write)
+  await ensureFolder(app, normalizeFolder(parentPath(path)));
+  return app.vault.createBinary(path, data);
+}
+
+/**
  * Saves an encoded image as a new file and returns it.
  *
  * - "obsidian": Obsidian's attachment setting decides the folder and avoids
@@ -89,19 +102,23 @@ export async function saveNew(app: App, blob: Blob, extension: string, context: 
   const data = await blob.arrayBuffer();
 
   if (context.destination.mode === "obsidian") {
-    const path = await app.fileManager.getAvailablePathForAttachment(
-      fileName(basename, extension),
-      context.sourcePath || undefined
-    );
-    // Obsidian creates the folder itself, but attachment plugins that patch
-    // the lookup may not (Custom Attachment Location defers it to the write)
-    await ensureFolder(app, normalizeFolder(parentPath(path)));
-    return app.vault.createBinary(path, data);
+    return createAttachment(app, fileName(basename, extension), data, context.sourcePath);
   }
 
   const folder = await ensureFolder(app, normalizeFolder(context.destination.folder));
   const name = availableName(basename, extension, nameSet(folder.children.map(c => c.name)));
   return app.vault.createBinary(joinPath(folder.path, name), data);
+}
+
+/**
+ * Saves a file as it is, under its own name, where Obsidian would put it as
+ * an attachment of the note at `sourcePath`, whatever the save settings
+ * say: the result is the same as when Obsidian handles the file itself.
+ *
+ * @param name - file name with extension
+ */
+export async function saveAsAttachment(app: App, blob: Blob, name: string, sourcePath: string): Promise<TFile> {
+  return createAttachment(app, name, await blob.arrayBuffer(), sourcePath);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   batchSummary, batchTargets, countByExtension, emptyTally, isAutoConvertTarget,
-  isGifFile, isInFolder, isLargerAfterConversion, joinLinks,
+  isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming,
 } from "./targets";
 
 const EXTS = ["jpg", "jpeg", "png", "gif", "bmp"];
@@ -17,6 +17,25 @@ describe("isAutoConvertTarget", () => {
 
   it("follows the configured extensions", () => {
     expect(isAutoConvertTarget({ name: "a.gif", type: "image/gif" }, ["png"])).toBe(false);
+  });
+});
+
+describe("planIncoming", () => {
+  const png = { name: "a.png", type: "image/png" };
+  const pdf = { name: "doc.pdf", type: "application/pdf" };
+  const webp = { name: "b.webp", type: "image/webp" };
+
+  it("leaves the event to Obsidian without a target image", () => {
+    expect(planIncoming([pdf, webp], EXTS)).toBeNull();
+    expect(planIncoming([], EXTS)).toBeNull();
+  });
+
+  it("attaches the other files, keeping the order", () => {
+    expect(planIncoming([pdf, png, webp], EXTS)).toEqual([
+      { file: pdf, action: "attach" },
+      { file: png, action: "convert" },
+      { file: webp, action: "attach" },
+    ]);
   });
 });
 

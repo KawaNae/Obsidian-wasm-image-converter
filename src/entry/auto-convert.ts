@@ -2,15 +2,17 @@ import { App, Editor, EditorPosition, MarkdownFileInfo, MarkdownView, Notice, Pl
 import { PluginSettings, Preset, resolvePreset } from "../settings";
 import { convertBlob } from "../conversion/convert";
 import { encoderFor } from "../conversion/encoders";
-import { embedLink, saveNew } from "../save/save";
+import { embedLink, saveAsAttachment, saveNew } from "../save/save";
 import { isAnimatedGif } from "../utils/gif-check";
 import { dropPosition } from "./drop-position";
-import { isAutoConvertTarget, isGifFile, joinLinks } from "./targets";
+import { IncomingAction, isGifFile, joinLinks, planIncoming } from "./targets";
 
 /**
  * Converts images dropped or pasted into the editor (the "auto-convert"
  * setting) and inserts their links at the drop position or the cursor: all
- * links at once, in the order of the files, one per line.
+ * links at once, in the order of the files, one per line. Other files of the
+ * same drop or paste (PDFs, non-target images) are saved as they are, as
+ * Obsidian saves attachments, and linked in their place among the others.
  *
  * Drop and paste differ only in where the files come from and where the
  * links go. Animated GIFs are saved as they are unless the settings ask to
@@ -47,8 +49,8 @@ export class AutoConverter {
 
   /**
    * Takes the event over when it carries target images and belongs to a
-   * note; otherwise Obsidian handles it as usual. Only the target images are
-   * handled: other files of the same event are not saved.
+   * note; otherwise Obsidian handles it as usual. Once taken over, every
+   * file of the event is handled here: see planIncoming.
    *
    * @param position - where the links go; called before anything async.
    *   null leaves the event to Obsidian
@@ -61,8 +63,8 @@ export class AutoConverter {
     position: () => EditorPosition | null
   ) {
     const settings = this.settings();
-    const targets = files.filter(f => isAutoConvertTarget(f, settings.batchConvertExtensions));
-    if (targets.length === 0) return;
+    const plan = planIncoming(files, settings.batchConvertExtensions);
+    if (!plan) return;
 
     const sourcePath = info.file?.path;
     const preset = resolvePreset(settings, settings.autoConvertPresetId);
@@ -75,10 +77,16 @@ export class AutoConverter {
     }
 
     evt.preventDefault();
-    void this.convertAndInsert(targets, editor, pos, sourcePath, preset);
+    void this.convertAndInsert(plan, editor, pos, sourcePath, preset);
   }
 
-  private async convertAndInsert(files: File[], editor: Editor, pos: EditorPosition, sourcePath: string, preset: Preset) {
+  private async convertAndInsert(
+    plan: { file: File; action: IncomingAction }[],
+    editor: Editor,
+    pos: EditorPosition,
+    sourcePath: string,
+    preset: Preset
+  ) {
     const settings = this.settings();
     const extension = encoderFor(preset.encode.format).extension;
     const links: string[] = [];
@@ -88,8 +96,13 @@ export class AutoConverter {
     let originalBytes = 0;
     let convertedBytes = 0;
 
-    for (const file of files) {
+    for (const { file, action } of plan) {
       try {
+        if (action === "attach") {
+          const saved = await saveAsAttachment(this.app, file, file.name, sourcePath);
+          links.push(embedLink(this.app, saved, sourcePath));
+          continue;
+        }
         if (isGifFile(file) && !settings.processAnimatedGifs && await isAnimatedGif(file)) {
           const gifExtension = file.name.match(/\.([^.]+)$/)?.[1] ?? "gif";
           links.push(await this.save(file, file, gifExtension, sourcePath));
@@ -102,7 +115,7 @@ export class AutoConverter {
         originalBytes += file.size;
         convertedBytes += converted.size;
       } catch (error) {
-        console.error(`Auto-conversion failed for ${file.name}:`, error);
+        console.error(`Auto-convert: failed to save ${file.name}:`, error);
         failed.push(file.name);
       }
     }
@@ -126,7 +139,7 @@ export class AutoConverter {
       new Notice(`⚠️ Kept animated GIF as is: ${keptGifs.join(", ")}`);
     }
     if (failed.length > 0) {
-      new Notice(`❌ Auto-conversion failed for ${failed.join(", ")}`);
+      new Notice(`❌ Failed to save ${failed.join(", ")}`);
     }
   }
 
