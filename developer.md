@@ -195,7 +195,8 @@ src/
 │   │   ├── overlay-registry.ts # 純粋: 開いている窓。アンロードで閉じる
 │   │   └── layer-order.ts     # 純粋: 窓の後ろに body へ置かれた要素（候補の一覧）を窓の内側とみなす
 │   └── components/
-│       ├── drop-zone.ts
+│       ├── drop-zone.ts       # ドロップ、ファイルの選択、paste を受ける。paste のため contenteditable にする
+│       ├── drop-zone-input.ts # 純粋: paste のファイルの取り出し、端末ごとの案内の文
 │       ├── folder-suggest.ts  # 保存先の欄のフォルダの候補
 │       ├── shown-suggest.ts   # 候補の一覧の基底。IME の Enter で選ばず、一覧の間はホットキーを止める
 │       ├── form-enter.ts      # 純粋: IME の確定の Enter の判定
