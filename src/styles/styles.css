@@ -75,6 +75,23 @@
     }
 }
 
+/* The name field: a textarea that wraps a long template and grows with
+   it. On one line it is Obsidian's text field: its height (30px, 44px on a
+   phone), its padding, its radius. The radius is capped at half that
+   height, so the round field of a phone keeps the same corners when it
+   grows, and no corner cuts into the text. */
+.wasm-image-modal .wasm-image-save-fields__name {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--input-height);
+    padding-block: calc((var(--input-height) - 1lh) / 2 - var(--input-border-width, 1px));
+    field-sizing: content;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    border-radius: min(var(--input-radius), calc(var(--input-height) / 2));
+    resize: none;
+}
+
 /* The expanded name under the name field */
 .wasm-image-save-fields__example {
     margin: -6px 0 10px;
