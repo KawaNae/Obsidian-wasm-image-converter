@@ -187,6 +187,7 @@ src/
 │   ├── converter-dialog.ts    # openConverterDialog: 殻 OverlayShell に ConverterBody を載せる
 │   ├── converter-body.ts      # ダイアログの中身。予測のデコードを変換でも使う
 │   ├── save-plan.ts           # 純粋: 名前と保存先の欄から saveNew / replaceExisting の引数を決める
+│   ├── clipboard.ts           # 端末ごとのクリップボードの読み取り。開いたときの自動の読み取り（iOS と Android では無効）、「Paste from Clipboard」のボタン（Android では出さない）
 │   ├── overlay/               # ダイアログの殻（obsidian-task-viewer から移植）
 │   │   ├── overlay-shell.ts   # 中央の表示、.is-phone でボトムシート。ESC、背景、戻る操作、引いて閉じる。題は出さず aria-label だけ。キーで一つに限り、同じ窓で開いていれば残し、別の窓なら閉じて開き直す（keepOverlay）
 │   │   ├── host-document.ts   # 純粋: ダイアログを開く窓（ノートの窓、ワークスペースの窓、メインの窓）。設定の窓には開かない
