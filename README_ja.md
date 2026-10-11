@@ -8,12 +8,15 @@ Obsidian用の高速画像変換プラグインです。WebAssembly (WASM) を�
 
 ### 🚀 高速変換
 - **WebAssembly技術**: 高性能な画像処理を実現
-- **複数フォーマット対応**: JPG、PNG、GIF、BMP、TIFF → WebP
+- **複数フォーマット対応**: JPG、PNG、GIF、BMP → WebP、AVIF、JPEG、PNG
 - **クロスプラットフォーム**: 変換機能はデスクトップ・モバイル両対応
 
-### 🎯 自動変換機能 (デスクトップ専用)
-- **ドラッグ&ドロップ自動変換**: 画像をエディタにドロップするだけで自動変換
-- **ペースト自動変換**: Ctrl+V で画像をペーストして自動変換
+### 🎯 自動変換機能
+- **ドラッグ&ドロップ自動変換**: 画像をエディタにドロップするだけで自動変換（デスクトップ）
+- **ペースト自動変換**: Ctrl+V で画像をペーストして自動変換（デスクトップとモバイル。モバイルでは貼り付けたファイルの名前が常に `image.png` になる）
+- 複数の画像は、選んだ順にまとめて挿入する。リンクの間は Obsidian と同じく空行で区切る
+- 画像と一緒にドロップまたはペーストした他のファイル（PDF、対象外の形式の画像）は、変換せずに Obsidian の添付ファイルの場所へ保存し、同じ順でリンクを入れる
+- vault の中のファイルは、複製も変換もせず、そのファイルへのリンクを入れる。ファイルエクスプローラーからのドロップや、Finder や Explorer でコピーしたファイルのペーストが当たる。vault の中のファイルだけなら Obsidian に任せる（デスクトップ）
 - **プリセット選択**: 自動変換時に使用するプリセットを事前に選択可能
 
 ### 🎛️ カスタマイズ可能な設定
@@ -21,11 +24,19 @@ Obsidian用の高速画像変換プラグインです。WebAssembly (WASM) を�
 - **品質調整**: 0.1 - 1.0 の範囲で圧縮品質を設定
 - **自動リサイズ**: 大きな画像を指定サイズに自動縮小
 - **グレースケール変換**: カラー画像を白黒に変換
-- **保存場所指定**: 変換後の画像保存先フォルダを設定
+- **保存場所指定**: Obsidian の添付ファイルの設定に従うか固定のフォルダにするかを選び、名前のテンプレートを設定
 
 ### 📋 便利な入力方法
-- **モーダルUI**: 詳細設定を行いながら変換
-- **クリップボード対応**: 画像を直接ペースト
+- **変換のダイアログ**: 詳細設定を行いながら変換。スマートフォンでは下から出るシートになり、下へ引いて閉じられる。名前の欄には名前のテンプレートが入り、下に展開した名前の見本が出る。保存先の欄は vault のフォルダを候補に出し、書き換えたフォルダはその変換だけに使う。保存先が Obsidian の設定に従うときは欄を空にし、保存のときに Obsidian が決める。値を変えたプリセットには「(modified)」が付く
+    - 名前、保存先、数値の欄で Enter を押すと変換する。IME の確定と、フォルダの候補を出している間の Enter は除く
+    - 長い名前のテンプレートは、欄の中で折り返して全部見える。改行は入らない
+    - Grayscale と Resize はトグルで切り替える。「Max size」の行に幅と高さを並べ、Resize がオフの間はこの行を隠す
+    - ダイアログに題は無い。設定の欄がスクロールしても、変換のボタンはダイアログとシートの下端に見えたままになる
+    - ダイアログはノートの窓に開き、同時に開くのは一つだけである
+- **ドロップゾーンへの貼り付け**: ダイアログのドロップゾーンに画像を貼り付けられる。デスクトップではクリックして Ctrl+V（macOS は Cmd+V）を押し、Android では長押しして「Paste」を押す。画像の無いものを貼ると「No image found in clipboard」と出る
+- **右クリックメニュー**: 「Convert to ...」で、そのファイルをその場で置き換える。モーダルで名前や保存先を変えると、名前の変更や移動になる
+- **一括変換**: コマンド「Batch Convert Images」（vault 全体）と、フォルダの右クリックメニューの「Batch convert images in this folder」。プリセットは確認のダイアログで選ぶ。大きくなる画像はスキップし、進捗は一つの通知にキャンセルのボタンと共に出る
+- **クリップボード対応**: デスクトップと iOS では、「Paste from Clipboard」でクリップボードの画像を読み込む。Android の WebView はプラグインにクリップボードの画像を読ませないため、Android ではこのボタンを出さない。代わりにドロップゾーンへ貼り付ける
 - **ファイルサイズ予測**: 変換前にファイルサイズを予測表示
 
 ## 📥 インストール方法
@@ -56,21 +67,26 @@ Obsidian用の高速画像変換プラグインです。WebAssembly (WASM) を�
 https://github.com/phibr0/obsidian-commander を利用して"WASM Image Converter：Convert Image"コマンドを好きな位置に置くことをお勧めします
 1. コマンドパレット (`Ctrl+P` または `Cmd+P`) を開く
 2. "WASM Image Converter：Convert Image" を検索・実行
-3. パネルに画像をドラッグ&ドロップもしくは"Paste from Clipboard" を押してクリップボードから読み込む
+3. パネルに画像をドラッグ&ドロップまたは貼り付けるか、"Paste from Clipboard" か "Import from system" を押して読み込む
 4. 各種変換パラメータを設定する
-5. "Convert & Insert" をクリックして変換・挿入
+5. "Convert & Insert" をクリックする（欄で Enter を押してもよい）と、変換してリンクを挿入する
 ![[2025-09-17 14-03-58.gif]]
 ## ⚙️ 設定項目
 
 ### 全般設定
-- **Auto-read clipboard on startup**: 起動時にクリップボードを自動チェック
-- **Auto-convert on drag & drop**: ドラッグ&ドロップ時の自動変換機能
+- **Auto-read clipboard on startup**: ダイアログを開いたときにクリップボードの画像を自動で読み込む
+    - iOS と Android では使えない。iOS は読むたびに許可を求め、Android の WebView は読み取りを拒むためである
+    - この二つではトグルを無効にし、値がオンでもクリップボードを読まない
+- **Auto-convert on drag & drop**: ドラッグ&ドロップとペーストの自動変換機能
 - **Auto-convert preset**: 自動変換時に使用するプリセット
+- **Save location**: 保存先。Obsidian の添付ファイルの設定に従うか、固定のフォルダにするか
+- **File name**: 名前のテンプレート。変数は `{original}`、`{note}`、`{date:YYYYMMDD}`（moment の書式）、`{size}`（KB）。既定は `IMG-{date:YYYYMMDD[T]HHmmssSSS}-{size}`
+- 既存のファイルの変換（右クリックメニュー、一括変換）では、場所と名前を保ち、拡張子だけを変える
+- 名前が既にあれば、Obsidian と同じく番号を足す（`name 1.webp`、`name 2.webp`）
 
 ### プリセット設定
 各プリセットで以下の項目を設定:
-- **Converter**: 変換エンジン (現在はWASM WebPのみ)
-- **Attachment folder**: 保存先フォルダ
+- **Converter**: 出力の形式（WASM WebP、WASM AVIF、JPEG、PNG）
 - **Quality**: 圧縮品質 (0.1 - 1.0)
 - **Grayscale**: グレースケール変換
 - **Resize**: 自動リサイズ機能
@@ -88,7 +104,8 @@ https://github.com/phibr0/obsidian-commander を利用して"WASM Image Converte
 
 ### プリセット編集・削除
 - **編集**: 各プリセットの "Edit" ボタンをクリック
-- **削除**: "Delete" ボタンをクリック (Defaultプリセットは削除不可)
+- **削除**: "Delete" ボタンをクリック (ビルトインのプリセットは削除と名前の変更が不可)
+- **ビルトインに戻す**: ビルトインのプリセットは中身を編集でき、"Restore built-in" で元の値に戻せる
 
 ## 📊 WebPのメリット
 
@@ -100,12 +117,14 @@ https://github.com/phibr0/obsidian-commander を利用して"WASM Image Converte
 ## 📱 対応プラットフォーム
 
 - **デスクトップ**: Windows、macOS、Linux (全機能対応)
-- **モバイル**: iOS、Android (手動変換のみ、自動変換は非対応)
+- **モバイル**: iOS、Android（ノートへのペーストの自動変換にも対応）
+    - Android: 「Paste from Clipboard」と「Auto-read clipboard on startup」は使えない。ダイアログのドロップゾーンを長押しして「Paste」を押す
+    - iOS: 「Auto-read clipboard on startup」は使えない
 
 ## 🎯 対応形式
 
-**入力形式**: JPG, JPEG, PNG, GIF, BMP, TIFF  
-**出力形式**: WebP
+**入力形式**: JPG, JPEG, PNG, GIF, BMP（変換のダイアログでは WebP も）  
+**出力形式**: WebP, AVIF, JPEG, PNG
 
 ## 🔧 開発情報
 
@@ -121,14 +140,15 @@ src/
 ├── main.ts                       # メインプラグインクラス
 ├── settings.ts                   # 設定インターフェースとデフォルト値
 ├── settings-tab.ts              # 設定UIコンポーネント
-├── image-converter-modal.ts     # メインUI モーダル
-├── file-service.ts              # ファイル操作
-├── converters/
-│   ├── webp-converter.ts        # WebP変換ロジック
-│   └── grayscale.ts             # グレースケール変換
-└── prediction/
-    ├── size-predictor.ts        # ファイルサイズ予測サービス
-    └── webp-predictor.ts        # WebP特化予測ロジック
+├── entry/                       # ドロップとペーストの自動変換、一括変換
+├── ui/                          # 変換のダイアログ（スマートフォンではボトムシート）
+├── save/                        # 名前のテンプレート、新規保存、置き換え、埋め込みリンク
+└── conversion/                  # 一度のデコード、描画、エンコード、サイズ予測
+    ├── decode.ts / render.ts    # デコードと、リサイズ・グレースケールを適用した RGBA
+    ├── encoders.ts              # エンコーダの登録表（WebP, AVIF, JPEG, PNG）
+    ├── convert.ts               # デコード → 描画 → エンコード
+    ├── predict.ts / estimate.ts # サイズ予測（経験式とサンプル）
+    └── wasm-loader.ts           # WASM エンコーダの取得、検証、キャッシュ
 ```
 
 ### 技術仕様
@@ -142,10 +162,10 @@ src/
 ### よくある問題
 1. **自動変換が動作しない**
    - 設定で "Auto-convert on drag & drop" が有効になっているか確認
-   - モバイル版では自動変換は非対応 (手動変換をご利用ください)
+   - モバイル版で自動変換するのはペーストした画像だけ
 
 2. **変換が失敗する**
-   - 対応形式の画像ファイルか確認 (JPG, PNG, GIF, BMP, TIFF)
+   - 対応形式の画像ファイルか確認 (JPG, PNG, GIF, BMP, WebP)。TIFF には対応していない
    - ファイルサイズが大きすぎる場合はリサイズ設定を確認
 
 3. **プリセットが見つからない**

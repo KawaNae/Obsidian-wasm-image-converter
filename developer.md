@@ -156,26 +156,60 @@ npm run build  # tsc 型チェック → production ビルド
 ```
 src/
 ├── main.ts                    # プラグインエントリーポイント
-├── settings.ts                # 設定型定義・デフォルト値
+├── settings.ts                # 設定型定義・デフォルト値、対応する拡張子（自動変換と一括変換の対象、ダイアログ）
 ├── settings-tab.ts            # 設定タブ UI（タブベース）
 ├── globals.d.ts               # グローバル型宣言 (__BUILD_TIME__)
-├── file-service.ts            # ファイル操作サービス
-├── converters/                # 画像変換ロジック
-│   ├── webp-converter.ts      # WASM WebP 変換
-│   ├── canvas-converter.ts    # Canvas API 変換（JPEG/PNG）
-│   └── grayscale.ts           # グレースケール変換
-├── prediction/                # サイズ予測
-│   ├── size-predictor.ts
-│   ├── webp-predictor.ts
-│   └── canvas-predictor.ts
-├── ui/                        # UI コンポーネント
-│   ├── image-converter-modal.ts
+├── conversion/                # 変換の層（Obsidian の保存や UI に依存しない）
+│   ├── decode.ts              # decode(blob): 一度だけデコードし、予測と変換で使い回す
+│   ├── render.ts              # render(decoded, encode, size?): リサイズとグレースケールを適用した RGBA
+│   ├── encoders.ts            # 形式ごとの拡張子、MIME、非可逆か、encode() の登録表
+│   ├── webp-encoder.ts        # jSquash WebP
+│   ├── avif-encoder.ts        # jSquash AVIF
+│   ├── canvas-encoder.ts      # Canvas API（JPEG/PNG）
+│   ├── convert.ts             # convert(decoded, encode) / convertBlob(blob, encode)
+│   ├── predict.ts             # analyze(), estimateBySample()
+│   ├── estimate.ts            # 純粋: 経験式、サンプルの計画と外挿
+│   ├── geometry.ts            # 純粋: リサイズの寸法、quality の変換
+│   ├── grayscale.ts           # 純粋: グレースケール
+│   ├── wasm-assets.ts         # 純粋: 取得する WASM の版と SHA-256
+│   └── wasm-loader.ts         # WASM の取得、検証、キャッシュ
+├── save/                      # 保存の層（変換済みの Blob を受け取り、デコードや変換はしない）
+│   ├── name.ts                # 純粋: resolveName(template, context, formatDate)、禁止文字、区切りの詰め
+│   ├── paths.ts               # 純粋: 重複を避ける名前（" 1"、" 2"）、置き換え後の名前、添付ファイルのフォルダ、パスの結合
+│   └── save.ts                # saveNew / replaceExisting / embedLink
+├── entry/                     # 入口の層（変換の層と保存の層を呼ぶ）
+│   ├── auto-convert.ts        # ドロップとペーストの自動変換。リンクを選んだ順にまとめて挿入する
+│   ├── drop-position.ts       # 公開の API でドロップの位置を得る（EditorView.findFromDOM、posAtCoords）
+│   ├── batch-convert.ts       # 一括変換（vault 全体、フォルダ）、確認のダイアログ、進捗の Notice
+│   ├── vault-file.ts          # ドロップとペーストのファイルの絶対パスから vault のファイルを引く（webUtils）
+│   └── targets.ts             # 純粋: 対象の判定、vault の中のファイルの表、リンクの連結、失敗の通知、一括変換の対象と集計
+├── ui/                        # 変換のダイアログ（右クリックメニューの置き換えのモードを含む）
+│   ├── converter-dialog.ts    # openConverterDialog: 殻 OverlayShell に ConverterBody を載せる
+│   ├── converter-body.ts      # ダイアログの中身。予測のデコードを変換でも使う
+│   ├── save-plan.ts           # 純粋: 名前と保存先の欄から saveNew / replaceExisting の引数を決める
+│   ├── clipboard.ts           # 端末ごとのクリップボードの読み取り。開いたときの自動の読み取り（iOS と Android では無効）、「Paste from Clipboard」のボタン（Android では出さない）
+│   ├── overlay/               # ダイアログの殻（obsidian-task-viewer から移植）
+│   │   ├── overlay-shell.ts   # 中央の表示、.is-phone でボトムシート。ESC、背景、戻る操作、引いて閉じる。題は出さず aria-label だけ。キーで一つに限り、同じ窓で開いていれば残し、別の窓なら閉じて開き直す（keepOverlay）
+│   │   ├── host-document.ts   # 純粋: ダイアログを開く窓（ノートの窓、ワークスペースの窓、メインの窓）。設定の窓には開かない
+│   │   ├── keyboard-aware-container.ts # ソフトウェアキーボードに隠れる欄を上へスクロールする
+│   │   ├── keyboard-state.ts  # 純粋: Capacitor のキーボードの高さ、キーボードの上端
+│   │   ├── hotkey-shield.ts   # フォーカスが窓にある間、ホットキーを止める
+│   │   ├── history-back.ts    # 戻る操作を Obsidian の onHistoryBack のスタックで受ける
+│   │   ├── overlay-registry.ts # 純粋: 開いている窓。アンロードで閉じる。キーで引け、二つ目を開くときの扱いを決める（keyedOpening）
+│   │   └── layer-order.ts     # 純粋: 窓の後ろに body へ置かれた要素（候補の一覧）を窓の内側とみなす
 │   └── components/
-│       ├── drop-zone.ts
-│       ├── preview-area.ts
-│       └── settings-panel.ts
+│       ├── drop-zone.ts       # ドロップ、ファイルの選択、paste を受ける。paste は全面に重ねた空の入力の層（contenteditable）で受ける
+│       ├── drop-zone-input.ts # 純粋: paste のファイルと画像の取り出し、端末ごとの案内の文、対応する形式の名前
+│       ├── folder-suggest.ts  # 保存先の欄のフォルダの候補
+│       ├── shown-suggest.ts   # 候補の一覧の基底。IME の Enter で選ばず、一覧の間はホットキーを止める
+│       ├── form-enter.ts      # 純粋: IME の確定の Enter の判定
+│       ├── single-line.ts     # 純粋: 名前の textarea を 1 行のテキストに保つ（改行を入れない、貼った改行を除く）
+│       ├── save-fields.ts     # 名前の欄（中身に合わせて伸びる textarea）と保存先の欄、名前の見本
+│       └── settings-panel.ts  # 変換設定の欄（Obsidian のトグル、Max size の 1 行）。値を変えたプリセットに「(modified)」を付ける
 ├── utils/
 │   └── gif-check.ts
-└── styles/
+└── styles/                    # ビルドで _variables.css、_overlay.css、styles.css の順に連結する
+    ├── _variables.css
+    ├── _overlay.css           # ダイアログの殻
     └── styles.css             # スタイルシート
 ```

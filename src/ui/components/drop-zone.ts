@@ -1,10 +1,38 @@
-import { Notice } from "obsidian";
+import { Notice, Platform } from "obsidian";
+import { DIALOG_EXTENSIONS } from "../../settings";
+import { dropZoneHint, formatNames, HintPlatform, isImageFile, pastedImages } from "./drop-zone-input";
 
+/** The notice of a paste, or a read of the clipboard, that brings no image */
+const NO_IMAGE_IN_CLIPBOARD = "\u274c No image found in clipboard";
+
+function hintPlatform(): HintPlatform {
+    if (Platform.isAndroidApp) return "android";
+    if (Platform.isIosApp) return "ios";
+    return Platform.isMacOS ? "mac" : "desktop";
+}
+
+/**
+ * Where the dialog takes images: dropped, picked with the file input, or
+ * pasted. An empty editing host (contenteditable), the input layer, covers
+ * the whole zone so that the zone can have the focus and receive a paste:
+ * Ctrl+V or Cmd+V on a desktop, the "Paste" of a long press on Android,
+ * where no button can read the clipboard. The placeholder and the preview
+ * lie under it, out of the editing host: a long press finds no word to
+ * select, so Android shows Paste alone and no selection handles.
+ *
+ * The zone itself takes the events the layer passes up (paste, beforeinput,
+ * input, drop): it takes the pasted images like dropped ones and refuses
+ * any edit, typing, deleting, the text of a paste. A paste without any
+ * image tells so, in the words of the "Paste from Clipboard" button. `inputmode="none"` keeps
+ * the soft keyboard down when the layer is tapped.
+ */
 export class DropZone {
     element: HTMLDivElement;
     private onFilesSelected: (files: File[]) => void;
 
     private contentContainer: HTMLDivElement;
+    /** The empty editing host over the zone; it has the focus and takes the paste */
+    private inputLayer: HTMLDivElement;
     private currentObjectUrls: string[] = [];
     private fileInput: HTMLInputElement;
     private isDisabled: boolean = false;
@@ -21,28 +49,32 @@ export class DropZone {
         this.fileInput.type = "file";
         this.fileInput.accept = "image/*";
         this.fileInput.multiple = true;
-        this.fileInput.style.display = "none";
+        this.fileInput.hidden = true;
         this.element.appendChild(this.fileInput);
+
+        this.inputLayer = document.createElement("div");
+        this.inputLayer.className = "wasm-image-drop-zone__input";
+        this.inputLayer.contentEditable = "true";
+        this.inputLayer.inputMode = "none";
+        this.inputLayer.spellcheck = false;
+        this.inputLayer.setAttribute("aria-label", "Paste images here");
 
         this.render();
     }
 
     public setDisabled(disabled: boolean) {
         this.isDisabled = disabled;
-        if (disabled) {
-            this.element.classList.add("wasm-image-drop-zone--disabled");
-            this.fileInput.disabled = true;
-        } else {
-            this.element.classList.remove("wasm-image-drop-zone--disabled");
-            this.fileInput.disabled = false;
-        }
+        this.element.classList.toggle("wasm-image-drop-zone--disabled", disabled);
+        this.fileInput.disabled = disabled;
+        this.inputLayer.contentEditable = disabled ? "false" : "true";
     }
 
     private render() {
         this.element.className = "wasm-image-drop-zone";
         this.element.appendChild(this.contentContainer);
+        this.element.appendChild(this.inputLayer);
 
-        this.showPlaceholder();
+        this.renderContent();
 
         this.fileInput.addEventListener("change", () => {
             if (this.isDisabled) return;
@@ -75,35 +107,54 @@ export class DropZone {
                 this.addFiles(newFiles);
             }
         });
+
+        this.element.addEventListener("paste", (e) => {
+            // Never let the browser insert what was pasted, text or images
+            e.preventDefault();
+            if (this.isDisabled) return;
+            const images = pastedImages(e.clipboardData);
+            if (images.length === 0) {
+                // Text, or files none of which is an image: nothing to add
+                new Notice(NO_IMAGE_IN_CLIPBOARD);
+                return;
+            }
+            this.addFiles(images);
+        });
+
+        // Refuse every edit: typing, Enter, deleting, cutting, dragging inside
+        this.element.addEventListener("beforeinput", (e) => e.preventDefault());
+
+        // An IME's composition cannot be cancelled in beforeinput; undo
+        // whatever reached the layer by emptying it.
+        this.element.addEventListener("input", () => this.inputLayer.empty());
     }
 
     private addFiles(newFiles: File[]) {
         // Filter to only image files
-        const imageFiles = newFiles.filter(f => f.type.startsWith("image/"));
+        const imageFiles = newFiles.filter(isImageFile);
         if (imageFiles.length === 0) return;
 
         // Add to existing selection
         this.selectedFiles = [...this.selectedFiles, ...imageFiles];
-        this.updatePreview();
+        this.renderContent();
         this.onFilesSelected(this.selectedFiles);
     }
 
     public removeFile(index: number) {
         this.selectedFiles.splice(index, 1);
-        this.updatePreview();
+        this.renderContent();
         this.onFilesSelected(this.selectedFiles);
     }
 
-    private updatePreview() {
-        // Clean up old URLs
+    /** Draws the placeholder, or the preview of the selected files. */
+    private renderContent() {
         this.revokeAllUrls();
+        this.contentContainer.empty();
 
         if (this.selectedFiles.length === 0) {
-            this.showPlaceholder();
+            this.renderPlaceholder();
             return;
         }
-
-        this.contentContainer.innerHTML = "";
 
         if (this.selectedFiles.length === 1) {
             // Single file: show large preview (same as original behavior)
@@ -150,17 +201,17 @@ export class DropZone {
         }
     }
 
-    public showPlaceholder() {
-        this.contentContainer.innerHTML = `
-      <div class="wasm-image-drop-zone__icon">\ud83d\udcf7</div>
-      <div style="margin-bottom: 5px;">Drag & drop images here</div>
-      <div class="wasm-image-drop-zone__subtext">
-        Supported: JPG, PNG, GIF, BMP, TIFF (multiple files supported)
-      </div>
-    `;
-
-        this.revokeAllUrls();
-        this.selectedFiles = [];
+    private renderPlaceholder() {
+        const hint = dropZoneHint(hintPlatform());
+        this.contentContainer.createDiv({ cls: "wasm-image-drop-zone__icon", text: "\ud83d\udcf7" });
+        this.contentContainer.createDiv({ cls: "wasm-image-drop-zone__heading", text: hint.heading });
+        if (hint.paste) {
+            this.contentContainer.createDiv({ cls: "wasm-image-drop-zone__subtext", text: hint.paste });
+        }
+        this.contentContainer.createDiv({
+            cls: "wasm-image-drop-zone__subtext",
+            text: `Supported: ${formatNames(DIALOG_EXTENSIONS)} (multiple files supported)`,
+        });
     }
 
     public dispose() {
@@ -189,7 +240,7 @@ export class DropZone {
                     }
                 }
             }
-            new Notice("\u274c No image found in clipboard");
+            new Notice(NO_IMAGE_IN_CLIPBOARD);
         } catch (err) {
             console.log("Clipboard read failed:", err);
             new Notice("\u274c Failed to read clipboard. Try using drag & drop instead.");
@@ -203,7 +254,7 @@ export class DropZone {
     /** Show preview for a single file (used by initial file from context menu) */
     public showPreview(file: File) {
         this.selectedFiles = [file];
-        this.updatePreview();
+        this.renderContent();
     }
 
     public getElement(): HTMLElement {

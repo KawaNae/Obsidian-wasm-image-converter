@@ -1,586 +1,145 @@
-import { Notice, Plugin, Editor, Platform, MarkdownView, TFile, Modal, normalizePath } from "obsidian";
-import { ConverterSettings, ConverterType, DEFAULT_SETTINGS, DEFAULT_PRESETS, getExtensionForConverter } from "./settings";
-import { openImageConverterModal } from "./ui/image-converter-modal";
+import { Notice, Plugin, MarkdownView, TFile, TFolder, Menu } from "obsidian";
+import { DIALOG_EXTENSIONS, PluginSettings, createDefaultSettings, resolvePreset } from "./settings";
+import { migrateSettings } from "./settings-migration";
+import { openConverterDialog } from "./ui/converter-dialog";
 import { WasmImageConverterSettingTab } from "./settings-tab";
-import { sizePredictionService } from "./prediction/size-predictor";
-import { WebPSizePredictor } from "./prediction/webp-predictor";
-import { JPEGSizePredictor, PNGSizePredictor, AVIFSizePredictor } from "./prediction/canvas-predictor";
-import { initWasmLoaderContext } from "./converters/wasm-loader";
-import { saveImageAndInsert, saveOriginalFile, convertAndReplaceFile } from "./file-service";
-import { isAnimatedGif } from "./utils/gif-check";
+import { initWasmLoaderContext } from "./conversion/wasm-loader";
+import { encoderFor } from "./conversion/encoders";
+import { AutoConverter } from "./entry/auto-convert";
+import { runBatchConvert } from "./entry/batch-convert";
+import { closeAllOverlays } from "./ui/overlay/overlay-registry";
+import { untrackAllKeyboards } from "./ui/overlay/keyboard-state";
+import { workspaceDocument } from "./ui/overlay/host-document";
 
 export default class WasmImageConverterPlugin extends Plugin {
-  settings: ConverterSettings = { ...DEFAULT_SETTINGS };
+  settings: PluginSettings = createDefaultSettings();
 
   async onload() {
     await this.loadSettings();
-
-    // Initialize size prediction service
-    sizePredictionService.registerPredictor(new WebPSizePredictor());
-    sizePredictionService.registerPredictor(new JPEGSizePredictor());
-    sizePredictionService.registerPredictor(new PNGSizePredictor());
-    sizePredictionService.registerPredictor(new AVIFSizePredictor());
 
     // Initialize remote WASM loaders (stores references only, no download yet)
     initWasmLoaderContext(this.app, this.manifest.dir!);
 
     this.addSettingTab(new WasmImageConverterSettingTab(this.app, this));
 
-    // Register auto-convert events if enabled
-    this.registerAutoConvertEvents();
+    new AutoConverter(this.app, () => this.settings).register(this);
 
     this.addCommand({
       id: "wasm-webp-open-converter",
       name: "Convert Image",
-      icon: "image-plus", // 他のオプション: "image", "convert", "camera", "file-image"
-      callback: async () => {
-        try {
-          const link = await openImageConverterModal(this.app, this.settings);
-          if (!link) return;
-
-          const active = this.app.workspace.getActiveFile();
-          if (active) {
-            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-            const editor = view?.editor;
-            if (editor) {
-              const cursor = editor.getCursor();
-              editor.replaceRange(link, cursor);
-            } else {
-              const content = await this.app.vault.read(active);
-              await this.app.vault.modify(active, content + "\n" + link);
-            }
-          } else {
-            new Notice("📋 Image link: " + link);
-          }
-        } catch (e) {
-          console.error(e);
-          new Notice("❌ Image conversion failed");
-        }
-      },
+      icon: "image-plus",
+      callback: () => this.openConverterForActiveNote(),
     });
 
-    // Batch convert command
     this.addCommand({
       id: "batch-convert-images",
       name: "Batch Convert Images",
-      callback: async () => {
-        await this.runBatchConvert();
-      }
+      callback: () => runBatchConvert(this.app, this.settings, null),
     });
 
-    // File menu event
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        if (!(file instanceof TFile)) return;
-
-        const supportedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
-        if (supportedExtensions.includes(file.extension.toLowerCase())) {
-          menu.addItem((item) => {
-            const ext = getExtensionForConverter(this.settings.converterType).toUpperCase();
-            item
-              .setTitle(`Convert to ${ext}...`)
-              .setIcon("image-file")
-              .onClick(async () => {
-                try {
-                  const arrayBuffer = await this.app.vault.readBinary(file);
-                  // Create a File object from the TFile content
-                  const imageFile = new File([arrayBuffer], file.name, {
-                    type: 'image/' + (file.extension === 'jpg' ? 'jpeg' : file.extension)
-                  });
-
-                  const link = await openImageConverterModal(this.app, this.settings, imageFile, file);
-
-                  if (link) {
-                    new Notice("✅ Image converted successfully");
-                    // Copy link to clipboard since we might not have an active editor
-                    await navigator.clipboard.writeText(link);
-                    new Notice("📋 Link copied to clipboard");
-                  }
-                } catch (e) {
-                  console.error("Conversion failed:", e);
-                  new Notice("❌ Failed to load image for conversion");
-                }
-              });
-          });
-        }
+        if (file instanceof TFolder) this.addFolderMenuItem(menu, file);
+        else if (file instanceof TFile) this.addFileMenuItem(menu, file);
       })
     );
   }
 
-  async onunload() {
-    // 何もしない
+  /**
+   * Our dialogs live on the document's body, which no teardown of
+   * Obsidian's reaches: close what is still open, and stop following the
+   * on-screen keyboard.
+   */
+  onunload() {
+    closeAllOverlays();
+    untrackAllKeyboards();
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const result = migrateSettings(await this.loadData());
+    this.settings = result.settings;
 
-    // Migration: older versions had no isBuiltin flag. "Default" was always
-    // protected there (even if the user edited its fields). Other presets are
-    // treated as built-in only when every field matches the built-in
-    // definition; a user preset that merely shares the name stays custom
-    // (and blocks that built-in from being added below).
-    for (const preset of this.settings.presets) {
-      if (preset.isBuiltin === undefined) {
-        const builtin = DEFAULT_PRESETS.find(b => b.name === preset.name);
-        preset.isBuiltin = preset.name === "Default" || (!!builtin &&
-          builtin.converterType === preset.converterType &&
-          builtin.quality === preset.quality &&
-          builtin.maxWidth === preset.maxWidth &&
-          builtin.maxHeight === preset.maxHeight &&
-          builtin.enableResize === preset.enableResize &&
-          builtin.enableGrayscale === preset.enableGrayscale &&
-          builtin.attachmentFolder === preset.attachmentFolder);
-      }
+    if (result.discardedFolders.length > 0) {
+      const folder = this.settings.save.destination.folder;
+      const lines = result.discardedFolders.map(d => `  - ${d.presetName}: "${d.folder}"`).join("\n");
+      new Notice(
+        `WASM Image Converter: presets no longer have their own save folder. ` +
+        `Converted images are now saved to "${folder}". ` +
+        `These preset folders were removed:\n${lines}`,
+        0
+      );
     }
 
-    // Ensure all built-in presets exist (for users upgrading from older versions)
-    const existingNames = new Set(this.settings.presets.map(p => p.name));
-    for (const builtin of DEFAULT_PRESETS) {
-      if (!existingNames.has(builtin.name)) {
-        this.settings.presets.push({ ...builtin });
-      }
-    }
-
-    // Migration: tiff cannot be decoded by the renderer, drop it from targets
-    this.settings.batchConvertExtensions =
-      this.settings.batchConvertExtensions.filter(ext => ext !== 'tiff');
+    if (result.changed) await this.saveSettings();
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
   }
 
-  // ===== Batch Convert =====
-
-  private async runBatchConvert() {
+  /**
+   * The dialog for new images, in the window of the active note (the main
+   * window when there is none); the links go to that note's cursor.
+   */
+  private async openConverterForActiveNote() {
     try {
-      // Find all target images
-      const allFiles = this.app.vault.getFiles();
-      const targetImages = allFiles.filter(file => this.isBatchConvertTarget(file));
+      const active = this.app.workspace.getActiveFile();
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      const hostDocument = workspaceDocument(this.app, view?.containerEl.ownerDocument ?? null);
+      const link = await openConverterDialog(this.app, this.settings, { sourcePath: active?.path ?? "" }, hostDocument);
+      if (!link) return;
 
-      if (targetImages.length === 0) {
-        new Notice('No images found for conversion');
-        return;
-      }
-
-      // Count by extension
-      const counts: Record<string, number> = {};
-      targetImages.forEach(file => {
-        const ext = file.extension.toLowerCase();
-        counts[ext] = (counts[ext] || 0) + 1;
-      });
-
-      // Create confirmation message
-      const countLines = Object.entries(counts)
-        .map(([ext, count]) => `  - ${count} × ${ext}`)
-        .join('\n');
-
-      const confirmed = await this.showBatchConvertConfirmation(
-        `Found ${targetImages.length} images to convert:\n${countLines}\n\nContinue?`
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      // Process images
-      let totalOriginalSize = 0;
-      let totalConvertedSize = 0;
-      let successCount = 0;
-      let errorCount = 0;
-
-      for (let i = 0; i < targetImages.length; i++) {
-        const image = targetImages[i];
-
-        // Check Animated GIFs
-        if (image.extension.toLowerCase() === 'gif') {
-          const arrayBuffer = await this.app.vault.readBinary(image);
-          const blob = new Blob([arrayBuffer]);
-          if (await isAnimatedGif(blob)) {
-            if (!this.settings.processAnimatedGifs) {
-              new Notice(`Skipping animated GIF: ${image.name}`);
-              continue;
-            }
-            // If allowed, it will be converted (flattened to static)
-          }
+      if (active) {
+        // The note the dialog opened for, while its view still shows it
+        const editor = view?.file === active ? view.editor : undefined;
+        if (editor) {
+          const offset = editor.posToOffset(editor.getCursor());
+          editor.replaceRange(link, editor.offsetToPos(offset));
+          editor.setCursor(editor.offsetToPos(offset + link.length));
+        } else {
+          const content = await this.app.vault.read(active);
+          await this.app.vault.modify(active, content + "\n" + link);
         }
+      } else {
+        new Notice("📋 Image link: " + link);
+      }
+    } catch (e) {
+      console.error(e);
+      new Notice("❌ Image conversion failed");
+    }
+  }
 
-        new Notice(`Converting ${i + 1}/${targetImages.length}: ${image.name}`);
-
+  /** The dialog in replace mode: name and folder start as the file's own. */
+  private addFileMenuItem(menu: Menu, file: TFile) {
+    if (!DIALOG_EXTENSIONS.includes(file.extension.toLowerCase())) return;
+    const preset = resolvePreset(this.settings, this.settings.defaultPresetId);
+    const ext = encoderFor(preset?.encode.format ?? "webp").extension.toUpperCase();
+    menu.addItem(item => item
+      .setTitle(`Convert to ${ext}...`)
+      .setIcon("image-file")
+      .onClick(async () => {
         try {
-          const result = await this.convertImage(image);
-          totalOriginalSize += result.originalSize;
-          totalConvertedSize += result.convertedSize;
-          successCount++;
-        } catch (error) {
-          console.error(`Failed to convert ${image.name}:`, error);
-          errorCount++;
-        }
-      }
-
-      // Show completion notice
-      const savedMB = ((totalOriginalSize - totalConvertedSize) / (1024 * 1024)).toFixed(2);
-      const ratio = totalOriginalSize > 0
-        ? (((totalOriginalSize - totalConvertedSize) / totalOriginalSize) * 100).toFixed(1)
-        : '0';
-
-      new Notice(
-        `✅ Batch conversion complete!\n` +
-        `Converted: ${successCount} images\n` +
-        `Failed: ${errorCount} images\n` +
-        `Total saved: ${savedMB} MB (${ratio}% reduction)`
-      );
-    } catch (error) {
-      console.error('Batch convert failed:', error);
-      new Notice('❌ Batch conversion failed');
-    }
-  }
-
-  private showBatchConvertConfirmation(message: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const modal = new (class extends Modal {
-        constructor(app: any) {
-          super(app);
-        }
-
-        onOpen() {
-          const { contentEl } = this;
-          contentEl.empty();
-
-          contentEl.createEl('h3', { text: 'Batch Convert Images' });
-          contentEl.createEl('pre', { text: message });
-
-          const buttonContainer = contentEl.createDiv('modal-button-container');
-
-          const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
-          cancelButton.onclick = () => {
-            this.close();
-            resolve(false);
-          };
-
-          const confirmButton = buttonContainer.createEl('button', {
-            text: 'Convert',
-            cls: 'mod-cta'
-          });
-          confirmButton.onclick = () => {
-            this.close();
-            resolve(true);
-          };
-        }
-
-        onClose() {
-          const { contentEl } = this;
-          contentEl.empty();
-        }
-      })(this.app);
-
-      modal.open();
-    });
-  }
-
-  private isBatchConvertTarget(file: TFile): boolean {
-    return this.settings.batchConvertExtensions.includes(file.extension.toLowerCase());
-  }
-
-  private async convertImage(imageFile: TFile): Promise<{ originalSize: number, convertedSize: number }> {
-    // Get the selected preset
-    const selectedPreset = this.settings.presets.find(
-      p => p.name === this.settings.autoConvertPreset
-    ) || this.settings.presets.find(p => p.name === "Default")
-      || this.settings.presets[0];
-
-    if (!selectedPreset) {
-      throw new Error('No preset found');
-    }
-
-    // Read the original file
-    const arrayBuffer = await this.app.vault.readBinary(imageFile);
-    const blob = new Blob([arrayBuffer], { type: `image/${imageFile.extension}` });
-    const file = new File([blob], imageFile.name, { type: blob.type });
-
-    const settings = { ...this.settings, attachmentFolder: selectedPreset.attachmentFolder };
-    const result = await convertAndReplaceFile(
-      this.app,
-      imageFile,
-      file,
-      settings,
-      selectedPreset.quality,
-      selectedPreset.enableResize,
-      selectedPreset.maxWidth,
-      selectedPreset.maxHeight,
-      selectedPreset.enableGrayscale,
-      selectedPreset.converterType
-    );
-
-    return {
-      originalSize: result.originalSize,
-      convertedSize: result.convertedSize
-    };
-  }
-
-  // ===== Auto-Convert Events =====
-
-  private registerAutoConvertEvents() {
-    // Auto-convert is desktop-only (platform never changes at runtime)
-    if (Platform.isMobile) return;
-
-    this.registerEvent(
-      this.app.workspace.on("editor-drop", async (evt: DragEvent, editor: Editor) => {
-        // Check at event time so settings changes take effect without reload
-        if (!this.settings.enableAutoConvert) return;
-
-        if (!evt.dataTransfer) {
-          console.warn("DataTransfer object is null. Cannot process drop event.");
-          return;
-        }
-
-        // Get the actual drop position from the mouse event
-        const pos = (editor as any).posAtMouse(evt);
-        if (!pos) {
-          console.warn("Could not determine drop position");
-          return;
-        }
-
-        // Extract file data
-        const fileData: { name: string, type: string, file: File }[] = [];
-        for (let i = 0; i < evt.dataTransfer.files.length; i++) {
-          const file = evt.dataTransfer.files[i];
-          fileData.push({ name: file.name, type: file.type, file });
-        }
-
-        // Check if we should process these files
-        const hasSupportedFiles = fileData.some(data => {
-          return data.type.startsWith('image/') &&
-            this.settings.batchConvertExtensions.some(ext =>
-              data.name.toLowerCase().endsWith(`.${ext}`)
-            );
-        });
-
-        if (hasSupportedFiles) {
-          evt.preventDefault(); // Prevent default behavior
-          await this.handleAutoConvert(fileData, editor, pos);
-        }
-      })
-    );
-
-    // Register paste event handler
-    this.registerEvent(
-      this.app.workspace.on("editor-paste", async (evt: ClipboardEvent, editor: Editor) => {
-        // Check at event time so settings changes take effect without reload
-        if (!this.settings.enableAutoConvert) return;
-
-        if (!evt.clipboardData) {
-          console.warn("ClipboardData object is null. Cannot process paste event.");
-          return;
-        }
-
-        const cursor = editor.getCursor();
-
-        // Extract clipboard item information
-        const itemData: { kind: string, type: string, file: File | null }[] = [];
-        for (let i = 0; i < evt.clipboardData.items.length; i++) {
-          const item = evt.clipboardData.items[i];
-          const file = item.kind === "file" ? item.getAsFile() : null;
-          itemData.push({ kind: item.kind, type: item.type, file });
-        }
-
-        // Check if we should process these items
-        const hasSupportedItems = itemData.some(data =>
-          data.kind === "file" &&
-          data.file &&
-          data.type.startsWith('image/') &&
-          this.settings.batchConvertExtensions.some(ext =>
-            data.file!.name.toLowerCase().endsWith(`.${ext}`)
-          )
-        );
-
-        if (hasSupportedItems) {
-          evt.preventDefault();
-          await this.handleAutoPaste(itemData, editor, cursor);
-        }
-      })
-    );
-  }
-
-  private async handleAutoConvert(
-    fileData: { name: string; type: string; file: File }[],
-    editor: Editor,
-    pos: any
-  ) {
-    // Filter supported image files
-    const supportedFiles = fileData
-      .filter(data => {
-        return data.type.startsWith('image/') &&
-          this.settings.batchConvertExtensions.some(ext =>
-            data.name.toLowerCase().endsWith(`.${ext}`)
-          );
-      })
-      .map(data => data.file);
-
-    if (supportedFiles.length === 0) return;
-
-    const activeFile = this.app.workspace.getActiveFile();
-    if (!activeFile) {
-      new Notice('No active file detected.');
-      return;
-    }
-
-    // Get the selected preset for auto-conversion
-    const selectedPreset = this.settings.presets.find(p => p.name === this.settings.autoConvertPreset)
-      || this.settings.presets.find(p => p.name === "Default")
-      || this.settings.presets[0];
-
-    if (!selectedPreset) {
-      new Notice('❌ No preset found for auto-conversion');
-      return;
-    }
-
-    // Process each file sequentially
-    for (const file of supportedFiles) {
-      try {
-        // Update the settings to use the preset's attachment folder
-        const settings = { ...this.settings, attachmentFolder: selectedPreset.attachmentFolder };
-
-        // Skip animated GIF
-        if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
-          if (await isAnimatedGif(file)) {
-            if (!this.settings.processAnimatedGifs) {
-              new Notice(`⚠️ Skipped animated GIF conversion: ${file.name}`);
-              try {
-                const savedPath = await saveOriginalFile(this.app, file, settings.attachmentFolder);
-                const fileName = savedPath.split("/").pop()!;
-                const markdownLink = `![[${fileName}]]`;
-                editor.replaceRange(markdownLink, pos);
-              } catch (err) {
-                console.error("Failed to save original GIF:", err);
-                new Notice(`❌ Failed to save original GIF: ${file.name}`);
-              }
-              continue;
-            }
+          const data = await this.app.vault.readBinary(file);
+          const extension = file.extension.toLowerCase();
+          const imageFile = new File([data], file.name, { type: `image/${extension === "jpg" ? "jpeg" : extension}` });
+          const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+          const link = await openConverterDialog(this.app, this.settings, { sourcePath, initialFile: imageFile, target: file }, workspaceDocument(this.app, null));
+          if (link) {
+            // There may be no editor to insert into; offer the link instead
+            await navigator.clipboard.writeText(link);
+            new Notice("📋 Link copied to clipboard");
           }
+        } catch (e) {
+          console.error("Conversion failed:", e);
+          new Notice("❌ Failed to load image for conversion");
         }
-
-        const result = await saveImageAndInsert(
-          this.app,
-          file,
-          settings,
-          selectedPreset.quality,
-          selectedPreset.enableResize,
-          selectedPreset.maxWidth,
-          selectedPreset.maxHeight,
-          selectedPreset.enableGrayscale,
-          selectedPreset.converterType
-        );
-
-        const fileName = result.path.split("/").pop()!;
-        const markdownLink = `![[${fileName}]]`;
-
-        // Insert link at drop position
-        editor.replaceRange(markdownLink, pos);
-
-        // Show success notification with preset info
-        const originalKB = (result.originalSize / 1024).toFixed(2);
-        const convertedKB = (result.convertedSize / 1024).toFixed(2);
-        const ratio = (((result.originalSize - result.convertedSize) / result.originalSize) * 100).toFixed(1);
-        new Notice(`✅ Auto-converted (${selectedPreset.name}): ${file.name} → ${originalKB}KB → ${convertedKB}KB (${ratio}% compressed)`);
-
-      } catch (error) {
-        console.error("Auto-conversion failed:", error);
-        new Notice(`❌ Auto-conversion failed for ${file.name}`);
-      }
-    }
+      }));
   }
 
-  private async handleAutoPaste(
-    itemData: { kind: string; type: string; file: File | null }[],
-    editor: Editor,
-    cursor: any
-  ) {
-    // Filter supported image files
-    const supportedFiles = itemData
-      .filter(data =>
-        data.kind === "file" &&
-        data.file &&
-        data.type.startsWith('image/') &&
-        this.settings.batchConvertExtensions.some(ext =>
-          data.file!.name.toLowerCase().endsWith(`.${ext}`)
-        )
-      )
-      .map(data => data.file!)
-      .filter((file): file is File => file !== null);
-
-    if (supportedFiles.length === 0) return;
-
-    const activeFile = this.app.workspace.getActiveFile();
-    if (!activeFile) {
-      new Notice('No active file detected.');
-      return;
-    }
-
-    // Get the selected preset for auto-conversion
-    const selectedPreset = this.settings.presets.find(p => p.name === this.settings.autoConvertPreset)
-      || this.settings.presets.find(p => p.name === "Default")
-      || this.settings.presets[0];
-
-    if (!selectedPreset) {
-      new Notice('❌ No preset found for auto-conversion');
-      return;
-    }
-
-    // Process each file sequentially
-    for (const file of supportedFiles) {
-      try {
-        // Update the settings to use the preset's attachment folder
-        const settings = { ...this.settings, attachmentFolder: selectedPreset.attachmentFolder };
-
-        // Skip animated GIF
-        if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
-          if (await isAnimatedGif(file)) {
-            if (!this.settings.processAnimatedGifs) {
-              new Notice(`⚠️ Skipped animated GIF conversion: ${file.name}`);
-              try {
-                const savedPath = await saveOriginalFile(this.app, file, settings.attachmentFolder);
-                const fileName = savedPath.split("/").pop()!;
-                const markdownLink = `![[${fileName}]]`;
-                editor.replaceRange(markdownLink, cursor);
-              } catch (err) {
-                console.error("Failed to save original GIF:", err);
-                new Notice(`❌ Failed to save original GIF: ${file.name}`);
-              }
-              continue;
-            }
-          }
-        }
-
-        const result = await saveImageAndInsert(
-          this.app,
-          file,
-          settings,
-          selectedPreset.quality,
-          selectedPreset.enableResize,
-          selectedPreset.maxWidth,
-          selectedPreset.maxHeight,
-          selectedPreset.enableGrayscale,
-          selectedPreset.converterType
-        );
-
-        const fileName = result.path.split("/").pop()!;
-        const markdownLink = `![[${fileName}]]`;
-
-        // Insert link at cursor position
-        editor.replaceRange(markdownLink, cursor);
-
-        // Show success notification with preset info
-        const originalKB = (result.originalSize / 1024).toFixed(2);
-        const convertedKB = (result.convertedSize / 1024).toFixed(2);
-        const ratio = (((result.originalSize - result.convertedSize) / result.originalSize) * 100).toFixed(1);
-        new Notice(`✅ Auto-converted (${selectedPreset.name}): ${file.name} → ${originalKB}KB → ${convertedKB}KB (${ratio}% compressed)`);
-
-      } catch (error) {
-        console.error("Auto-conversion failed:", error);
-        new Notice(`❌ Auto-conversion failed for ${file.name}`);
-      }
-    }
+  private addFolderMenuItem(menu: Menu, folder: TFolder) {
+    menu.addItem(item => item
+      .setTitle("Batch convert images in this folder")
+      .setIcon("images")
+      .onClick(() => runBatchConvert(this.app, this.settings, folder)));
   }
-
 }

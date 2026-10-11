@@ -8,12 +8,15 @@ A fast, efficient image conversion plugin for Obsidian that converts images to W
 
 ### 🚀 High-Speed Conversion
 - **WebAssembly Technology**: High-performance image processing
-- **Multiple Format Support**: JPG, PNG, GIF, BMP, TIFF → WebP
+- **Multiple Format Support**: JPG, PNG, GIF, BMP → WebP, AVIF, JPEG or PNG
 - **Cross-Platform**: Conversion functionality works on both desktop and mobile
 
-### 🎯 Auto-Conversion Features (Desktop Only)
-- **Drag & Drop Auto-Conversion**: Automatically convert images by simply dropping them into the editor
-- **Paste Auto-Conversion**: Automatically convert images pasted with Ctrl+V
+### 🎯 Auto-Conversion Features
+- **Drag & Drop Auto-Conversion**: Automatically convert images by simply dropping them into the editor (desktop)
+- **Paste Auto-Conversion**: Automatically convert images pasted with Ctrl+V (desktop and mobile; on mobile the pasted file is always named `image.png`)
+- Several images are inserted at once, in their order, separated by an empty line as Obsidian separates them
+- Other files dropped or pasted together with the images (PDFs, images of other formats) are saved as they are, in Obsidian's attachment location, and linked in their place
+- Files already in the vault (dragged from the file explorer, or copied in Finder or Explorer and pasted) are neither copied nor converted: they are linked where they are. A drop or paste of such files only is left to Obsidian (desktop)
 - **Preset Selection**: Pre-select presets for use during auto-conversion
 
 ### 🎛️ Customizable Settings
@@ -21,11 +24,19 @@ A fast, efficient image conversion plugin for Obsidian that converts images to W
 - **Quality Adjustment**: Set compression quality from 0.1 to 1.0
 - **Auto-Resize**: Automatically downsize large images to specified dimensions
 - **Grayscale Conversion**: Convert color images to black and white
-- **Save Location**: Configure destination folder for converted images
+- **Save Location**: Follow Obsidian's attachment setting or use a fixed folder, with a file name template
 
 ### 📋 Convenient Input Methods
-- **Modal UI**: Convert with detailed settings configuration
-- **Clipboard Support**: Paste images directly
+- **Converter dialog**: Convert with detailed settings configuration. On phones the dialog opens as a bottom sheet that can be pulled down to close. The name field holds the name template (an example of the expanded name is shown below it), and the folder field suggests the vault's folders; a folder typed there applies to that conversion only. When the save location follows Obsidian's setting, the folder field is left empty and Obsidian decides the folder when saving. A preset whose values were changed shows "(modified)"
+    - Enter in the name, folder or number fields converts (not while an IME is composing or the folder suggestions are shown)
+    - A long name template wraps onto several lines instead of being cut off; line breaks are never inserted
+    - Grayscale and Resize are toggles; "Max size" holds the width and height on one row and is hidden while Resize is off
+    - The dialog has no title, and the convert button stays at the bottom of the dialog or sheet while the settings scroll
+    - The dialog opens in the window of the note, and only one is open at a time
+- **Drop zone paste**: Images can be pasted into the dialog's drop zone: click it and press Ctrl+V (Cmd+V on macOS) on desktop, or long-press it and tap Paste on Android. A paste without any image shows "No image found in clipboard"
+- **File menu**: "Convert to ...", which replaces the file in place; changing the name or folder in the dialog renames or moves it
+- **Batch convert**: the "Batch Convert Images" command (whole vault) or "Batch convert images in this folder" in the folder menu. The preset is chosen in the confirmation dialog; images that would get larger are skipped, and one notice shows the progress with a cancel button
+- **Clipboard Support**: "Paste from Clipboard" loads an image from the clipboard on desktop and iOS. Android does not show this button, because its WebView never lets a plugin read an image from the clipboard; paste into the drop zone instead
 - **File Size Prediction**: Preview file size before conversion
 
 ## 📥 Installation
@@ -59,22 +70,25 @@ We recommend using [Obsidian Commander](https://github.com/phibr0/obsidian-comma
 
 1. Open the command palette (`Ctrl+P` or `Cmd+P`)
 2. Search for and execute "WASM Image Converter: Convert Image"
-3. Drag & drop images into the panel or click "Paste from Clipboard" to load from clipboard
+3. Drag & drop images into the panel, paste them into it, click "Paste from Clipboard", or pick files with "Import from system"
 4. Configure conversion parameters
-5. Click "Convert & Insert" to convert and insert
+5. Click "Convert & Insert" (or press Enter in a field) to convert and insert
 ![Manual conversion demo](2025-09-17%2014-03-58.gif)
 
 ## ⚙️ Settings
 
 ### General Settings
-- **Auto-read clipboard on startup**: Automatically check clipboard on startup
-- **Auto-convert on drag & drop**: Enable auto-conversion for drag & drop
+- **Auto-read clipboard on startup**: Automatically check clipboard on startup. Not available on iOS, where every read asks for permission, nor on Android, where the WebView denies the read; there the toggle is disabled and the clipboard is not read
+- **Auto-convert on drag & drop**: Enable auto-conversion for drag & drop and paste
 - **Auto-convert preset**: Preset to use for auto-conversion
+- **Save location**: Follow Obsidian's attachment setting, or a fixed folder
+- **File name**: Name template with `{original}`, `{note}`, `{date:YYYYMMDD}` (moment format) and `{size}` (KB). Default `IMG-{date:YYYYMMDD[T]HHmmssSSS}-{size}`
+- Converting an existing file (file menu, batch convert) keeps its folder and name and only changes the extension
+- A number is added to a name that is taken (`name 1.webp`, `name 2.webp`), as Obsidian does
 
 ### Preset Configuration
 Configure the following for each preset:
-- **Converter**: Conversion engine (currently WASM WebP only)
-- **Attachment folder**: Destination folder
+- **Converter**: Output format (WASM WebP, WASM AVIF, JPEG, PNG)
 - **Quality**: Compression quality (0.1 - 1.0)
 - **Grayscale**: Grayscale conversion
 - **Resize**: Auto-resize functionality
@@ -92,7 +106,8 @@ Configure the following for each preset:
 
 ### Editing and Deleting Presets
 - **Edit**: Click the "Edit" button for each preset
-- **Delete**: Click the "Delete" button (Default preset cannot be deleted)
+- **Delete**: Click the "Delete" button (built-in presets cannot be deleted or renamed)
+- **Restore built-in**: Built-in presets can be edited and restored to their original values
 
 ## 📊 Benefits of WebP
 
@@ -104,12 +119,14 @@ Configure the following for each preset:
 ## 📱 Platform Support
 
 - **Desktop**: Windows, macOS, Linux (full feature support)
-- **Mobile**: iOS, Android (manual conversion only, auto-conversion not supported)
+- **Mobile**: iOS, Android (including auto-conversion of images pasted into a note)
+    - Android: no "Paste from Clipboard" button and no "Auto-read clipboard on startup"; long-press the dialog's drop zone and tap Paste instead
+    - iOS: no "Auto-read clipboard on startup"
 
 ## 🎯 Supported Formats
 
-**Input Formats**: JPG, JPEG, PNG, GIF, BMP, TIFF  
-**Output Format**: WebP
+**Input Formats**: JPG, JPEG, PNG, GIF, BMP (and WebP in the converter dialog)  
+**Output Formats**: WebP, AVIF, JPEG, PNG
 
 ## 🔧 Development
 
@@ -127,14 +144,15 @@ src/
 ├── main.ts                       # Main plugin class
 ├── settings.ts                   # Settings interface and defaults
 ├── settings-tab.ts              # Settings UI component
-├── image-converter-modal.ts     # Main UI modal
-├── file-service.ts              # File operations
-├── converters/
-│   ├── webp-converter.ts        # WebP conversion logic
-│   └── grayscale.ts             # Grayscale conversion
-└── prediction/
-    ├── size-predictor.ts        # File size prediction service
-    └── webp-predictor.ts        # WebP-specific prediction logic
+├── entry/                       # Auto-convert on drop and paste, batch convert
+├── ui/                          # Converter dialog (a bottom sheet on phones)
+├── save/                        # Name template, saveNew, replaceExisting, embed links
+└── conversion/                  # Decode once, render, encode, predict size
+    ├── decode.ts / render.ts    # Decoding and resize/grayscale to RGBA
+    ├── encoders.ts              # Encoder registry (WebP, AVIF, JPEG, PNG)
+    ├── convert.ts               # decode -> render -> encode
+    ├── predict.ts / estimate.ts # Size prediction (heuristic + sample encode)
+    └── wasm-loader.ts           # Download, verify and cache WASM encoders
 ```
 
 ### Technical Specifications
@@ -148,10 +166,10 @@ src/
 ### Common Issues
 1. **Auto-conversion not working**
    - Check that "Auto-convert on drag & drop" is enabled in settings
-   - Auto-conversion is not supported on mobile (please use manual conversion)
+   - On mobile, only pasted images are auto-converted
 
 2. **Conversion fails**
-   - Verify the image file is in a supported format (JPG, PNG, GIF, BMP, TIFF)
+   - Verify the image file is in a supported format (JPG, PNG, GIF, BMP, WebP). TIFF is not supported
    - If file size is too large, check resize settings
 
 3. **Preset not found**
