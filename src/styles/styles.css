@@ -32,16 +32,27 @@
     min-width: 0;
 }
 
-.wasm-image-modal__checkbox-label {
+/* Grayscale, Resize: Obsidian's toggle after the name, which toggles it too */
+.wasm-image-modal .wasm-image-modal__setting-row--toggle .wasm-image-modal__setting-label {
     cursor: pointer;
     user-select: none;
 }
 
-.wasm-image-modal__checkbox-container {
+/* Max size: the width and the height side by side, at any width */
+.wasm-image-modal__size {
     display: flex;
-    flex: 1 1 0;
     align-items: center;
+    gap: 6px;
+}
+
+.wasm-image-modal .wasm-image-modal__size input {
+    flex: 1 1 0;
     min-width: 0;
+}
+
+.wasm-image-modal__size-x {
+    flex: none;
+    color: var(--wimg-text-muted);
 }
 
 /* The quality of a lossless format */
@@ -62,15 +73,15 @@
     flex: none;
 }
 
-/* A narrow body: every row but a checkbox's folds the same way */
+/* A narrow body: every row but a toggle's folds the same way */
 @container wasm-image-converter (max-width: 320px) {
-    .wasm-image-modal .wasm-image-modal__setting-row:not(.wasm-image-modal__setting-row--checkbox) {
+    .wasm-image-modal .wasm-image-modal__setting-row:not(.wasm-image-modal__setting-row--toggle) {
         flex-direction: column;
         align-items: stretch;
         gap: 4px;
     }
 
-    .wasm-image-modal .wasm-image-modal__setting-row:not(.wasm-image-modal__setting-row--checkbox) > * {
+    .wasm-image-modal .wasm-image-modal__setting-row:not(.wasm-image-modal__setting-row--toggle) > * {
         flex: none;
     }
 }

@@ -1,3 +1,4 @@
+import { ToggleComponent } from "obsidian";
 import { EncodeSettings, ImageFormat, Preset, cloneEncode, encodeEquals, presetLabel, resolvePreset } from "../../settings";
 import { ENCODER_LIST, encoderFor } from "../../conversion/encoders";
 import { listenFormEnter } from "./form-enter";
@@ -7,6 +8,9 @@ import { listenFormEnter } from "./form-enter";
  * values; changing a value afterwards keeps the preset selected and marks it
  * "(modified)" until the values equal the preset's again. An Enter in a
  * number field takes the value typed in it, then submits the dialog.
+ *
+ * Grayscale and Resize are Obsidian's toggles. The largest width and
+ * height share one row, "Max size", shown while Resize is on.
  */
 export class SettingsPanel {
     element: HTMLDivElement;
@@ -23,10 +27,13 @@ export class SettingsPanel {
     private formatSelect!: HTMLSelectElement;
     private qualityInput!: HTMLInputElement;
     private qualityRow!: HTMLDivElement;
-    private resizeCheckbox!: HTMLInputElement;
+    private resizeToggle!: ToggleComponent;
+    private sizeRow!: HTMLDivElement;
     private maxWInput!: HTMLInputElement;
     private maxHInput!: HTMLInputElement;
-    private grayscaleCheckbox!: HTMLInputElement;
+    private grayscaleToggle!: ToggleComponent;
+    /** A preset's values are being loaded into the inputs: their callbacks stay quiet */
+    private loading = false;
 
     /**
      * @param presets - presets to choose from
@@ -85,34 +92,19 @@ export class SettingsPanel {
         this.qualityRow = this.qualityInput.parentElement as HTMLDivElement;
 
         // Grayscale
-        this.grayscaleCheckbox = this.createCheckbox("Grayscale", this.encode.grayscale, (checked) => {
-            this.encode.grayscale = checked;
+        this.grayscaleToggle = this.createToggle("Grayscale", this.encode.grayscale, (on) => {
+            this.encode.grayscale = on;
             this.notifyChange();
         });
 
-        // Resize
-        this.resizeCheckbox = this.createCheckbox("Resize", this.encode.resize.enabled, (checked) => {
-            this.encode.resize.enabled = checked;
+        // Resize, and the largest size while it is on
+        this.resizeToggle = this.createToggle("Resize", this.encode.resize.enabled, (on) => {
+            this.encode.resize.enabled = on;
+            this.updateSizeRow();
             this.notifyChange();
         });
-
-        // Max Width
-        this.maxWInput = this.createNumberInput("Max Width:", 100, 5000, 1, this.encode.resize.maxWidth, (val) => {
-            const clamped = Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
-            this.maxWInput.value = String(clamped);
-            this.encode.resize.maxWidth = clamped;
-            this.notifyChange();
-        });
-        this.maxWInput.placeholder = "1920";
-
-        // Max Height
-        this.maxHInput = this.createNumberInput("Max Height:", 100, 5000, 1, this.encode.resize.maxHeight, (val) => {
-            const clamped = Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
-            this.maxHInput.value = String(clamped);
-            this.encode.resize.maxHeight = clamped;
-            this.notifyChange();
-        });
-        this.maxHInput.placeholder = "1080";
+        this.createSizeRow();
+        this.updateSizeRow();
 
         // Set initial quality state based on format
         this.updateQualityState();
@@ -144,17 +136,21 @@ export class SettingsPanel {
         return select;
     }
 
+    private createRow(label: string): HTMLDivElement {
+        const row = this.element.createDiv({ cls: "wasm-image-modal__setting-row" });
+        row.createEl("label", { cls: "wasm-image-modal__setting-label", text: label });
+        return row;
+    }
+
     private createNumberInput(label: string, min: number, max: number, step: number, initial: number, onChange: (val: number) => void): HTMLInputElement {
-        const row = document.createElement("div");
-        row.className = "wasm-image-modal__setting-row";
+        const row = this.createRow(label);
+        const input = this.createNumberField(row, min, max, step, initial, onChange);
+        input.addClass("wasm-image-modal__setting-control");
+        return input;
+    }
 
-        const lbl = document.createElement("label");
-        lbl.className = "wasm-image-modal__setting-label";
-        lbl.textContent = label;
-
-        const input = document.createElement("input");
-        input.type = "number";
-        input.className = "wasm-image-modal__setting-control";
+    private createNumberField(parent: HTMLElement, min: number, max: number, step: number, initial: number, onChange: (val: number) => void): HTMLInputElement {
+        const input = parent.createEl("input", { type: "number" });
         input.min = String(min);
         input.max = String(max);
         input.step = String(step);
@@ -168,40 +164,53 @@ export class SettingsPanel {
             take();
             this.onSubmit();
         });
-
-        row.appendChild(lbl);
-        row.appendChild(input);
-        this.element.appendChild(row);
         return input;
     }
 
-    private createCheckbox(label: string, initial: boolean, onChange: (checked: boolean) => void): HTMLInputElement {
-        const row = document.createElement("div");
-        row.className = "wasm-image-modal__setting-row wasm-image-modal__setting-row--checkbox";
+    /** "Max size: [1920] × [1080]": the width and the height side by side, at any width. */
+    private createSizeRow() {
+        this.sizeRow = this.createRow("Max size:");
+        this.sizeRow.addClass("wasm-image-modal__setting-row--size");
+        const fields = this.sizeRow.createDiv({ cls: "wasm-image-modal__setting-control wasm-image-modal__size" });
+        const take = (val: number) => Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
 
-        const text = document.createElement("label");
-        text.className = "wasm-image-modal__setting-label wasm-image-modal__checkbox-label";
-        text.textContent = label;
+        this.maxWInput = this.createNumberField(fields, 100, 5000, 1, this.encode.resize.maxWidth, (val) => {
+            const clamped = take(val);
+            this.maxWInput.value = String(clamped);
+            this.encode.resize.maxWidth = clamped;
+            this.notifyChange();
+        });
+        this.maxWInput.placeholder = "1920";
+        this.maxWInput.setAttribute("aria-label", "Max width");
 
-        const container = document.createElement("div");
-        container.className = "wasm-image-modal__checkbox-container";
+        fields.createSpan({ cls: "wasm-image-modal__size-x", text: "×" });
 
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = initial;
+        this.maxHInput = this.createNumberField(fields, 100, 5000, 1, this.encode.resize.maxHeight, (val) => {
+            const clamped = take(val);
+            this.maxHInput.value = String(clamped);
+            this.encode.resize.maxHeight = clamped;
+            this.notifyChange();
+        });
+        this.maxHInput.placeholder = "1080";
+        this.maxHInput.setAttribute("aria-label", "Max height");
+    }
 
-        // Allow clicking label to toggle
-        const id = `cb-${label}-${Math.random().toString(36).substr(2, 9)}`;
-        checkbox.id = id;
-        text.htmlFor = id;
+    /** The size row is shown while Resize is on. */
+    private updateSizeRow() {
+        this.sizeRow.toggle(this.encode.resize.enabled);
+    }
 
-        checkbox.addEventListener("change", () => onChange(checkbox.checked));
-
-        container.appendChild(checkbox);
-        row.appendChild(text);
-        row.appendChild(container);
-        this.element.appendChild(row);
-        return checkbox;
+    /** Obsidian's toggle after the name; a click on the name toggles it too. */
+    private createToggle(label: string, initial: boolean, onChange: (on: boolean) => void): ToggleComponent {
+        const row = this.createRow(label);
+        row.addClass("wasm-image-modal__setting-row--toggle");
+        const toggle = new ToggleComponent(row)
+            .setValue(initial)
+            .onChange((on) => {
+                if (!this.loading) onChange(on);
+            });
+        row.querySelector("label")?.addEventListener("click", () => toggle.setValue(!toggle.getValue()));
+        return toggle;
     }
 
     private handlePresetChange(id: string) {
@@ -221,8 +230,11 @@ export class SettingsPanel {
         this.qualityInput.value = String(this.encode.quality);
         this.maxWInput.value = String(this.encode.resize.maxWidth);
         this.maxHInput.value = String(this.encode.resize.maxHeight);
-        this.resizeCheckbox.checked = this.encode.resize.enabled;
-        this.grayscaleCheckbox.checked = this.encode.grayscale;
+        this.loading = true;
+        this.resizeToggle.setValue(this.encode.resize.enabled);
+        this.grayscaleToggle.setValue(this.encode.grayscale);
+        this.loading = false;
+        this.updateSizeRow();
         this.updateQualityState();
     }
 
