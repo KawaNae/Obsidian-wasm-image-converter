@@ -3,6 +3,7 @@ import WasmImageConverterPlugin from "./main";
 import { Preset, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, DEFAULT_NAME_TEMPLATE, builtinEncode, builtinPresets, createPresetId, encodeEquals, repairPresetRefs } from "./settings";
 import { newFileBasename } from "./save/save";
 import { ENCODER_LIST, encoderFor } from "./conversion/encoders";
+import { canAutoReadClipboard } from "./ui/clipboard";
 
 export class WasmImageConverterSettingTab extends PluginSettingTab {
   plugin: WasmImageConverterPlugin;
@@ -130,15 +131,24 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
     });
     generalDesc.style.marginBottom = "15px";
 
-    new Setting(el)
+    const clipboardAvailable = canAutoReadClipboard();
+    const clipboardSetting = new Setting(el)
       .setName("Auto-read clipboard on startup")
       .setDesc("Automatically check clipboard for images when opening the converter (may show permission dialog on mobile devices)")
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.autoReadClipboard)
+        .setDisabled(!clipboardAvailable)
         .onChange(async (value) => {
           this.plugin.settings.autoReadClipboard = value;
           await this.plugin.saveSettings();
         }));
+    if (!clipboardAvailable) {
+      clipboardSetting.settingEl.addClass("wasm-image-settings__item--unavailable");
+      clipboardSetting.descEl.createDiv({
+        cls: "wasm-image-settings__warning",
+        text: "Not available on iOS: the clipboard is not read when the converter opens.",
+      });
+    }
 
     new Setting(el)
       .setName("Accurate size prediction")

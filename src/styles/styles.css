@@ -343,6 +343,17 @@
     padding: 4px 0 8px;
 }
 
+/* A setting that cannot be used on this device (iOS): greyed out, with a warning */
+.wasm-image-settings .wasm-image-settings__item--unavailable .setting-item-name,
+.wasm-image-settings .wasm-image-settings__item--unavailable .setting-item-control {
+    opacity: 0.5;
+}
+
+.wasm-image-settings .wasm-image-settings__warning {
+    margin-top: 4px;
+    color: var(--wimg-text-warning);
+}
+
 .wasm-image-settings .wasm-image-settings__template {
     width: 100%;
     min-width: 18em;

@@ -12,6 +12,7 @@ import { SettingsPanel } from "./components/settings-panel";
 import { SaveFields } from "./components/save-fields";
 import { canonicalFolder, displayFolder, planNewFile, planReplacement } from "./save-plan";
 import { joinLinks, sizeChange } from "../entry/targets";
+import { canAutoReadClipboard } from "./clipboard";
 
 /** What the dialog converts, and for which note. */
 export interface ConverterRequest {
@@ -143,7 +144,7 @@ export class ConverterBody {
         if (this.initialFile) {
             this.handleFilesSelect([this.initialFile]);
             this.dropZone.showPreview(this.initialFile);
-        } else if (this.settings.autoReadClipboard) {
+        } else if (this.settings.autoReadClipboard && canAutoReadClipboard()) {
             this.autoReadClipboard();
         }
     }

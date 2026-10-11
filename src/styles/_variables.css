@@ -18,6 +18,7 @@ body {
     --wimg-text: var(--text-normal);
     --wimg-text-muted: var(--text-muted);
     --wimg-text-error: var(--text-error);
+    --wimg-text-warning: var(--text-warning);
     --wimg-accent: var(--interactive-accent);
     --wimg-accent-text: var(--text-accent);
     --wimg-border: var(--background-modifier-border);
