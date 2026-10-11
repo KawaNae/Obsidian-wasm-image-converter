@@ -184,8 +184,25 @@
 }
 
 .wasm-image-drop-zone:hover,
+.wasm-image-drop-zone:focus,
 .wasm-image-drop-zone--drag-over {
     border-color: var(--wimg-accent);
+}
+
+/* The zone is contenteditable only to receive a paste: no caret, no focus
+   ring (the border shows the focus), no highlight of a selection. */
+.wasm-image-drop-zone[contenteditable] {
+    outline: none;
+    caret-color: transparent;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wasm-image-drop-zone[contenteditable] ::selection {
+    background-color: transparent;
+}
+
+.wasm-image-drop-zone__heading {
+    margin-bottom: 5px;
 }
 
 .wasm-image-drop-zone--disabled {

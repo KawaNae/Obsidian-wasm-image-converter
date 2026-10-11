@@ -1,5 +1,21 @@
-import { Notice } from "obsidian";
+import { Notice, Platform } from "obsidian";
+import { dropZoneHint, HintPlatform, pastedFiles } from "./drop-zone-input";
 
+function hintPlatform(): HintPlatform {
+    if (Platform.isAndroidApp) return "android";
+    if (Platform.isIosApp) return "ios";
+    return Platform.isMacOS ? "mac" : "desktop";
+}
+
+/**
+ * Where the dialog takes images: dropped, picked with the file input, or
+ * pasted. The zone is an editing host (contenteditable) so that it can
+ * have the focus and receive a paste: Ctrl+V or Cmd+V on a desktop, the
+ * "Paste" of a long press on Android, where no button can read the
+ * clipboard. It takes the pasted images like dropped ones and refuses any
+ * edit: typing, deleting, the text of a paste. `inputmode="none"` keeps
+ * the soft keyboard down when it is tapped.
+ */
 export class DropZone {
     element: HTMLDivElement;
     private onFilesSelected: (files: File[]) => void;
@@ -24,25 +40,25 @@ export class DropZone {
         this.fileInput.style.display = "none";
         this.element.appendChild(this.fileInput);
 
+        this.element.contentEditable = "true";
+        this.element.inputMode = "none";
+        this.element.spellcheck = false;
+
         this.render();
     }
 
     public setDisabled(disabled: boolean) {
         this.isDisabled = disabled;
-        if (disabled) {
-            this.element.classList.add("wasm-image-drop-zone--disabled");
-            this.fileInput.disabled = true;
-        } else {
-            this.element.classList.remove("wasm-image-drop-zone--disabled");
-            this.fileInput.disabled = false;
-        }
+        this.element.classList.toggle("wasm-image-drop-zone--disabled", disabled);
+        this.fileInput.disabled = disabled;
+        this.element.contentEditable = disabled ? "false" : "true";
     }
 
     private render() {
         this.element.className = "wasm-image-drop-zone";
         this.element.appendChild(this.contentContainer);
 
-        this.showPlaceholder();
+        this.renderContent();
 
         this.fileInput.addEventListener("change", () => {
             if (this.isDisabled) return;
@@ -75,6 +91,25 @@ export class DropZone {
                 this.addFiles(newFiles);
             }
         });
+
+        this.element.addEventListener("paste", (e) => {
+            // Never let the browser insert what was pasted, text or images
+            e.preventDefault();
+            if (this.isDisabled) return;
+            this.addFiles(pastedFiles(e.clipboardData));
+        });
+
+        // Refuse every edit: typing, Enter, deleting, cutting, dragging inside
+        this.element.addEventListener("beforeinput", (e) => e.preventDefault());
+
+        // An IME's composition cannot be cancelled in beforeinput; undo
+        // whatever reached the zone by drawing it again.
+        this.element.addEventListener("input", () => {
+            for (const node of Array.from(this.element.childNodes)) {
+                if (node !== this.fileInput && node !== this.contentContainer) node.remove();
+            }
+            this.renderContent();
+        });
     }
 
     private addFiles(newFiles: File[]) {
@@ -84,26 +119,25 @@ export class DropZone {
 
         // Add to existing selection
         this.selectedFiles = [...this.selectedFiles, ...imageFiles];
-        this.updatePreview();
+        this.renderContent();
         this.onFilesSelected(this.selectedFiles);
     }
 
     public removeFile(index: number) {
         this.selectedFiles.splice(index, 1);
-        this.updatePreview();
+        this.renderContent();
         this.onFilesSelected(this.selectedFiles);
     }
 
-    private updatePreview() {
-        // Clean up old URLs
+    /** Draws the placeholder, or the preview of the selected files. */
+    private renderContent() {
         this.revokeAllUrls();
+        this.contentContainer.empty();
 
         if (this.selectedFiles.length === 0) {
-            this.showPlaceholder();
+            this.renderPlaceholder();
             return;
         }
-
-        this.contentContainer.innerHTML = "";
 
         if (this.selectedFiles.length === 1) {
             // Single file: show large preview (same as original behavior)
@@ -150,17 +184,17 @@ export class DropZone {
         }
     }
 
-    public showPlaceholder() {
-        this.contentContainer.innerHTML = `
-      <div class="wasm-image-drop-zone__icon">\ud83d\udcf7</div>
-      <div style="margin-bottom: 5px;">Drag & drop images here</div>
-      <div class="wasm-image-drop-zone__subtext">
-        Supported: JPG, PNG, GIF, BMP, TIFF (multiple files supported)
-      </div>
-    `;
-
-        this.revokeAllUrls();
-        this.selectedFiles = [];
+    private renderPlaceholder() {
+        const hint = dropZoneHint(hintPlatform());
+        this.contentContainer.createDiv({ cls: "wasm-image-drop-zone__icon", text: "\ud83d\udcf7" });
+        this.contentContainer.createDiv({ cls: "wasm-image-drop-zone__heading", text: hint.heading });
+        if (hint.paste) {
+            this.contentContainer.createDiv({ cls: "wasm-image-drop-zone__subtext", text: hint.paste });
+        }
+        this.contentContainer.createDiv({
+            cls: "wasm-image-drop-zone__subtext",
+            text: "Supported: JPG, PNG, GIF, BMP, TIFF (multiple files supported)",
+        });
     }
 
     public dispose() {
@@ -203,7 +237,7 @@ export class DropZone {
     /** Show preview for a single file (used by initial file from context menu) */
     public showPreview(file: File) {
         this.selectedFiles = [file];
-        this.updatePreview();
+        this.renderContent();
     }
 
     public getElement(): HTMLElement {
