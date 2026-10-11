@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dropZoneHint, isImageFile, pastedFiles, pastedImages } from "./drop-zone-input";
+import { DIALOG_EXTENSIONS } from "../../settings";
+import { dropZoneHint, formatNames, isImageFile, pastedFiles, pastedImages } from "./drop-zone-input";
 
 function file(name: string, type: string): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type });
@@ -80,5 +81,15 @@ describe("dropZoneHint", () => {
 
   it("keeps iOS as it was", () => {
     expect(dropZoneHint("ios")).toEqual({ heading: "Drag & drop images here", paste: null });
+  });
+});
+
+describe("formatNames", () => {
+  it("names jpg and jpeg once, and WebP as it is written", () => {
+    expect(formatNames(["jpg", "jpeg", "png", "webp"])).toBe("JPG, PNG, WebP");
+  });
+
+  it("names the formats of the dialog, without TIFF", () => {
+    expect(formatNames(DIALOG_EXTENSIONS)).toBe("JPG, PNG, GIF, BMP, WebP");
   });
 });

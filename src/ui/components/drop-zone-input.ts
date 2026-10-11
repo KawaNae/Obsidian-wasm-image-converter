@@ -61,3 +61,17 @@ export function dropZoneHint(platform: HintPlatform): { heading: string; paste: 
             return { heading: "Drag & drop images here", paste: "or click here and press Ctrl+V to paste" };
     }
 }
+
+/**
+ * The formats a list of extensions names, as the placeholder shows them:
+ * upper case, WebP as it is written, jpg and jpeg once as JPG.
+ */
+export function formatNames(extensions: readonly string[]): string {
+    const names = extensions.map(ext => {
+        const e = ext.toLowerCase();
+        if (e === "jpg" || e === "jpeg") return "JPG";
+        if (e === "webp") return "WebP";
+        return e.toUpperCase();
+    });
+    return [...new Set(names)].join(", ");
+}

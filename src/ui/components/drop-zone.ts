@@ -1,5 +1,6 @@
 import { Notice, Platform } from "obsidian";
-import { dropZoneHint, HintPlatform, isImageFile, pastedImages } from "./drop-zone-input";
+import { DIALOG_EXTENSIONS } from "../../settings";
+import { dropZoneHint, formatNames, HintPlatform, isImageFile, pastedImages } from "./drop-zone-input";
 
 /** The notice of a paste, or a read of the clipboard, that brings no image */
 const NO_IMAGE_IN_CLIPBOARD = "\u274c No image found in clipboard";
@@ -209,7 +210,7 @@ export class DropZone {
         }
         this.contentContainer.createDiv({
             cls: "wasm-image-drop-zone__subtext",
-            text: "Supported: JPG, PNG, GIF, BMP, TIFF (multiple files supported)",
+            text: `Supported: ${formatNames(DIALOG_EXTENSIONS)} (multiple files supported)`,
         });
     }
 

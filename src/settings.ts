@@ -79,6 +79,19 @@ export const BUILTIN_PRESETS: readonly Preset[] = [
   },
 ];
 
+/**
+ * Extensions batch convert and auto-convert can target: the choices of the
+ * settings tab, all on by default. Not tiff, which the renderer (Chromium)
+ * cannot decode; it was dropped from the targets in v0.6.0.
+ */
+export const TARGET_EXTENSIONS: readonly string[] = ["jpg", "jpeg", "png", "gif", "bmp"];
+
+/**
+ * Extensions of the images the converter dialog is offered for in the file
+ * menu, and that its drop zone names: the targets, and webp to convert again.
+ */
+export const DIALOG_EXTENSIONS: readonly string[] = [...TARGET_EXTENSIONS, "webp"];
+
 export const DEFAULT_NAME_TEMPLATE = "IMG-{date:YYYYMMDD[T]HHmmssSSS}-{size}";
 export const DEFAULT_FOLDER = "Attachments";
 
@@ -128,8 +141,7 @@ export function createDefaultSettings(): PluginSettings {
     },
     autoReadClipboard: false, // off by default (avoids permission issues on iPad)
     enableAutoConvert: false,
-    // tiff is excluded because Chromium cannot decode it
-    batchConvertExtensions: ["jpg", "jpeg", "png", "gif", "bmp"],
+    batchConvertExtensions: [...TARGET_EXTENSIONS],
     processAnimatedGifs: false, // keep animations by default
     enableSampledPrediction: true, // turn off on low-power devices
   };

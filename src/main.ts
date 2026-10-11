@@ -1,5 +1,5 @@
 import { Notice, Plugin, MarkdownView, TFile, TFolder, Menu } from "obsidian";
-import { PluginSettings, createDefaultSettings, resolvePreset } from "./settings";
+import { DIALOG_EXTENSIONS, PluginSettings, createDefaultSettings, resolvePreset } from "./settings";
 import { migrateSettings } from "./settings-migration";
 import { openConverterDialog } from "./ui/converter-dialog";
 import { WasmImageConverterSettingTab } from "./settings-tab";
@@ -10,9 +10,6 @@ import { runBatchConvert } from "./entry/batch-convert";
 import { closeAllOverlays } from "./ui/overlay/overlay-registry";
 import { untrackAllKeyboards } from "./ui/overlay/keyboard-state";
 import { workspaceDocument } from "./ui/overlay/host-document";
-
-/** Extensions the file menu offers to convert. */
-const FILE_MENU_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp"];
 
 export default class WasmImageConverterPlugin extends Plugin {
   settings: PluginSettings = createDefaultSettings();
@@ -114,7 +111,7 @@ export default class WasmImageConverterPlugin extends Plugin {
 
   /** The dialog in replace mode: name and folder start as the file's own. */
   private addFileMenuItem(menu: Menu, file: TFile) {
-    if (!FILE_MENU_EXTENSIONS.includes(file.extension.toLowerCase())) return;
+    if (!DIALOG_EXTENSIONS.includes(file.extension.toLowerCase())) return;
     const preset = resolvePreset(this.settings, this.settings.defaultPresetId);
     const ext = encoderFor(preset?.encode.format ?? "webp").extension.toUpperCase();
     menu.addItem(item => item

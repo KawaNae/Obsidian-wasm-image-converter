@@ -1,6 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting, Modal } from "obsidian";
 import WasmImageConverterPlugin from "./main";
-import { Preset, ImageFormat, DEFAULT_ENCODE, DEFAULT_FOLDER, DEFAULT_NAME_TEMPLATE, builtinEncode, builtinPresets, createPresetId, encodeEquals, repairPresetRefs } from "./settings";
+import { Preset, ImageFormat, DEFAULT_ENCODE, TARGET_EXTENSIONS, DEFAULT_FOLDER, DEFAULT_NAME_TEMPLATE, builtinEncode, builtinPresets, createPresetId, encodeEquals, repairPresetRefs } from "./settings";
 import { newFileBasename } from "./save/save";
 import { ENCODER_LIST, encoderFor } from "./conversion/encoders";
 import { canAutoReadClipboard } from "./ui/clipboard";
@@ -204,9 +204,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
     targetExtDesc.style.marginBottom = "10px";
 
     const extensionsContainer = el.createDiv('batch-convert-extensions-container');
-    const availableExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp'];
-
-    availableExtensions.forEach(ext => {
+    TARGET_EXTENSIONS.forEach(ext => {
       if (ext === 'gif') {
         const isGifEnabled = this.plugin.settings.batchConvertExtensions.includes('gif');
 
