@@ -347,9 +347,36 @@
     color: var(--wimg-text-warning);
 }
 
+/* Rows with long values: Save location, Save folder, File name. Their
+   controls do not shrink, so where the description would be squeezed to a
+   word a line, the row folds as Obsidian folds every row under 400px: the
+   description above, the control the whole width under it. The query is
+   Obsidian's own container, the tab's content (.vertical-tab-content), so
+   the row folds by the width of the settings, in a window of any size and
+   on a phone. */
 .wasm-image-settings .wasm-image-settings__template {
-    width: 100%;
-    min-width: 18em;
+    width: 18em;
+}
+
+@container (max-width: 560px) {
+    .wasm-image-settings .wasm-image-settings__item--wide {
+        flex-direction: column;
+    }
+
+    .wasm-image-settings .wasm-image-settings__item--wide .setting-item-info {
+        align-self: flex-start;
+        margin-inline-end: 0;
+    }
+
+    .wasm-image-settings .wasm-image-settings__item--wide .setting-item-control {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .wasm-image-settings .wasm-image-settings__item--wide .setting-item-control :is(input, select) {
+        width: 100%;
+        max-width: 100%;
+    }
 }
 
 .wasm-image-settings .wasm-image-settings__nav {

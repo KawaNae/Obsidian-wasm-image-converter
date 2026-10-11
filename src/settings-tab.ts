@@ -75,7 +75,7 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
   private renderSaveSettings(el: HTMLElement): void {
     const save = this.plugin.settings.save;
 
-    new Setting(el)
+    const locationSetting = new Setting(el)
       .setName("Save location")
       .setDesc("Where new images are saved. Converting an existing file keeps its folder and name.")
       .addDropdown(dropdown => dropdown
@@ -122,6 +122,11 @@ export class WasmImageConverterSettingTab extends PluginSettingTab {
         "Empty values and the separators they leave are removed; a number is added when the name is taken.",
     });
     const exampleEl = templateSetting.descEl.createDiv({ text: preview() });
+
+    // Long values: these rows fold where their description would be squeezed
+    for (const setting of [locationSetting, folderSetting, templateSetting]) {
+      setting.settingEl.addClass("wasm-image-settings__item--wide");
+    }
   }
 
   private renderGeneralTab(el: HTMLElement): void {
