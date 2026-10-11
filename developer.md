@@ -188,12 +188,13 @@ src/
 │   ├── converter-body.ts      # ダイアログの中身。予測のデコードを変換でも使う
 │   ├── save-plan.ts           # 純粋: 名前と保存先の欄から saveNew / replaceExisting の引数を決める
 │   ├── overlay/               # ダイアログの殻（obsidian-task-viewer から移植）
-│   │   ├── overlay-shell.ts   # 中央の表示、.is-phone でボトムシート。ESC、背景、戻る操作、引いて閉じる
+│   │   ├── overlay-shell.ts   # 中央の表示、.is-phone でボトムシート。ESC、背景、戻る操作、引いて閉じる。題は出さず aria-label だけ。キーで一つに限り、開いていれば前に出す（raiseOverlay）
+│   │   ├── host-document.ts   # 純粋: ダイアログを開く窓（ノートの窓、ワークスペースの窓、メインの窓）。設定の窓には開かない
 │   │   ├── keyboard-aware-container.ts # ソフトウェアキーボードに隠れる欄を上へスクロールする
 │   │   ├── keyboard-state.ts  # 純粋: Capacitor のキーボードの高さ、キーボードの上端
 │   │   ├── hotkey-shield.ts   # フォーカスが窓にある間、ホットキーを止める
 │   │   ├── history-back.ts    # 戻る操作を Obsidian の onHistoryBack のスタックで受ける
-│   │   ├── overlay-registry.ts # 純粋: 開いている窓。アンロードで閉じる
+│   │   ├── overlay-registry.ts # 純粋: 開いている窓。アンロードで閉じる。キーで引ける
 │   │   └── layer-order.ts     # 純粋: 窓の後ろに body へ置かれた要素（候補の一覧）を窓の内側とみなす
 │   └── components/
 │       ├── drop-zone.ts       # ドロップ、ファイルの選択、paste を受ける。paste は全面に重ねた空の入力の層（contenteditable）で受ける
@@ -201,8 +202,9 @@ src/
 │       ├── folder-suggest.ts  # 保存先の欄のフォルダの候補
 │       ├── shown-suggest.ts   # 候補の一覧の基底。IME の Enter で選ばず、一覧の間はホットキーを止める
 │       ├── form-enter.ts      # 純粋: IME の確定の Enter の判定
-│       ├── save-fields.ts     # 名前と保存先の欄、名前の見本
-│       └── settings-panel.ts  # 変換設定の欄。値を変えたプリセットに「(modified)」を付ける
+│       ├── single-line.ts     # 純粋: 名前の textarea を 1 行のテキストに保つ（改行を入れない、貼った改行を除く）
+│       ├── save-fields.ts     # 名前の欄（中身に合わせて伸びる textarea）と保存先の欄、名前の見本
+│       └── settings-panel.ts  # 変換設定の欄（Obsidian のトグル、Max size の 1 行）。値を変えたプリセットに「(modified)」を付ける
 ├── utils/
 │   └── gif-check.ts
 └── styles/                    # ビルドで _variables.css、_overlay.css、styles.css の順に連結する
