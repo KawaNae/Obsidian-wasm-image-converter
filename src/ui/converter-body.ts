@@ -12,7 +12,7 @@ import { SettingsPanel } from "./components/settings-panel";
 import { SaveFields } from "./components/save-fields";
 import { canonicalFolder, displayFolder, planNewFile, planReplacement } from "./save-plan";
 import { joinLinks, sizeChange } from "../entry/targets";
-import { canAutoReadClipboard } from "./clipboard";
+import { canAutoReadClipboard, canPasteByButton } from "./clipboard";
 
 /** What the dialog converts, and for which note. */
 export interface ConverterRequest {
@@ -113,7 +113,9 @@ export class ConverterBody {
         if (!this.initialFile) {
             const sourceBtnRow = bodyEl.createDiv({ cls: "wasm-image-drop-zone__buttons" });
             sourceBtnRow.style.marginTop = "15px";
-            this.pasteBtn = this.createSourceButton(sourceBtnRow, "clipboard-paste", " Paste from Clipboard", () => this.dropZone.handleClipboardPaste());
+            if (canPasteByButton()) {
+                this.pasteBtn = this.createSourceButton(sourceBtnRow, "clipboard-paste", " Paste from Clipboard", () => this.dropZone.handleClipboardPaste());
+            }
             this.importBtn = this.createSourceButton(sourceBtnRow, "download", " Import from system", () => this.dropZone.triggerFileInput());
         } else {
             this.dropZone.setDisabled(true);
