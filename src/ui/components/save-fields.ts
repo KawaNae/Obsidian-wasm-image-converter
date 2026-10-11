@@ -1,11 +1,14 @@
 import { App } from "obsidian";
 import { FieldValues } from "../save-plan";
 import { FolderSuggest } from "./folder-suggest";
+import { listenFormEnter } from "./form-enter";
 
 /**
  * The name and folder fields of the converter dialog, with an example of
  * the expanded name under the name field. Both start with a value the
- * caller resolved; save-plan.ts decides what the edited values mean.
+ * caller resolved; save-plan.ts decides what the edited values mean. An
+ * Enter in either submits the dialog, except one an IME commits with and
+ * one that picks a folder from the list of candidates.
  */
 export class SaveFields {
     readonly element: HTMLDivElement;
@@ -17,13 +20,15 @@ export class SaveFields {
      * @param initialName - name template, or a plain name
      * @param initialFolder - folder shown first ("/" for the root); "" shows
      *   `folderPlaceholder` instead
+     * @param onSubmit - an Enter in a field: convert, as the button does
      */
     constructor(
         app: App,
         private readonly initialName: string,
         private readonly initialFolder: string,
         folderPlaceholder: string,
-        onChange: () => void
+        onChange: () => void,
+        onSubmit: () => void
     ) {
         this.element = document.createElement("div");
         this.element.className = "wasm-image-save-fields";
@@ -31,13 +36,15 @@ export class SaveFields {
         this.nameInput = this.createRow("Name:", initialName);
         this.nameInput.placeholder = initialName;
         this.nameInput.addEventListener("input", onChange);
+        listenFormEnter(this.nameInput, onSubmit);
 
         this.exampleEl = this.element.createDiv({ cls: "wasm-image-save-fields__example" });
 
         this.folderInput = this.createRow("Folder:", initialFolder);
         this.folderInput.placeholder = initialFolder || folderPlaceholder;
         this.folderInput.addEventListener("input", onChange);
-        new FolderSuggest(app, this.folderInput);
+        const suggest = new FolderSuggest(app, this.folderInput);
+        listenFormEnter(this.folderInput, onSubmit, () => suggest.listShown);
     }
 
     private createRow(label: string, value: string): HTMLInputElement {

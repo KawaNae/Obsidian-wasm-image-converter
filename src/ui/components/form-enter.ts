@@ -47,3 +47,27 @@ export function composingIn(field: CompositionSource): boolean {
     }
     return state.composing;
 }
+
+/** The part of a keydown a form's Enter reads and stops. */
+type EnterEvent = EnterKey & Pick<KeyboardEvent, "defaultPrevented" | "preventDefault">;
+
+/** The part of a field an Enter is listened for on. */
+interface EnterSource {
+    addEventListener(type: "compositionstart" | "compositionend", listener: () => void): void;
+    addEventListener(type: "keydown", listener: (e: EnterEvent) => void): void;
+}
+
+/**
+ * Calls `submit` on an Enter in `field` that is the form's: not an IME's
+ * (isFormEnter), not one something else took first (an open list of
+ * candidates picks an item with it and prevents its default), and not
+ * while `taken` says the field's own list of candidates is open.
+ */
+export function listenFormEnter(field: EnterSource, submit: () => void, taken: () => boolean = () => false): void {
+    composingIn(field);
+    field.addEventListener("keydown", (e) => {
+        if (e.defaultPrevented || taken() || !isFormEnter(e, composingIn(field))) return;
+        e.preventDefault();
+        submit();
+    });
+}

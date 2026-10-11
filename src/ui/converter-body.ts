@@ -100,7 +100,8 @@ export class ConverterBody {
         this.settingsPanel = new SettingsPanel(
             this.settings.presets,
             this.settings.defaultPresetId,
-            () => this.updatePrediction()
+            () => this.updatePrediction(),
+            () => this.submit()
         );
         bodyEl.appendChild(this.settingsPanel.getElement());
 
@@ -182,12 +183,19 @@ export class ConverterBody {
      */
     private createSaveFields(): SaveFields {
         const onChange = () => this.updateExample();
+        const onSubmit = () => this.submit();
         if (this.target) {
-            return new SaveFields(this.app, this.target.basename, displayFolder(this.target.parent?.path ?? ""), "", onChange);
+            return new SaveFields(this.app, this.target.basename, displayFolder(this.target.parent?.path ?? ""), "", onChange, onSubmit);
         }
         const { destination, nameTemplate } = this.settings.save;
         const folder = destination.mode === "folder" ? displayFolder(destination.folder) : "";
-        return new SaveFields(this.app, nameTemplate, folder, "Obsidian's attachment folder", onChange);
+        return new SaveFields(this.app, nameTemplate, folder, "Obsidian's attachment folder", onChange, onSubmit);
+    }
+
+    /** An Enter in a field: what pressing the convert button does, when it can be pressed. */
+    private submit() {
+        if (this.convertBtn.disabled) return;
+        void this.runConversion();
     }
 
     private setInputsDisabled(disabled: boolean) {

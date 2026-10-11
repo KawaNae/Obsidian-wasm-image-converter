@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composingIn, EnterKey, isFormEnter } from "./form-enter";
+import { composingIn, EnterKey, isFormEnter, listenFormEnter } from "./form-enter";
 
 function key(init: Partial<EnterKey> = {}): EnterKey {
   return { key: "Enter", isComposing: false, keyCode: 13, ...init };
@@ -7,12 +7,12 @@ function key(init: Partial<EnterKey> = {}): EnterKey {
 
 /** A field that records its listeners and fires them. */
 class FakeField {
-  private listeners = new Map<string, (() => void)[]>();
-  addEventListener(type: string, fn: () => void): void {
+  private listeners = new Map<string, ((e?: any) => void)[]>();
+  addEventListener(type: string, fn: (e?: any) => void): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]);
   }
-  fire(type: string): void {
-    for (const fn of this.listeners.get(type) ?? []) fn();
+  fire(type: string, e?: unknown): void {
+    for (const fn of this.listeners.get(type) ?? []) fn(e);
   }
   count(type: string): number {
     return this.listeners.get(type)?.length ?? 0;
@@ -53,5 +53,49 @@ describe("composingIn", () => {
     composingIn(field);
     expect(field.count("compositionstart")).toBe(1);
     expect(field.count("compositionend")).toBe(1);
+  });
+});
+
+describe("listenFormEnter", () => {
+  function keydown(init: Partial<EnterKey> & { defaultPrevented?: boolean } = {}) {
+    const e = { ...key(init), defaultPrevented: init.defaultPrevented ?? false, preventDefault() { e.defaultPrevented = true; } };
+    return e;
+  }
+
+  it("submits on the form's Enter and keeps it from doing anything else", () => {
+    const field = new FakeField();
+    let submitted = 0;
+    listenFormEnter(field, () => submitted++);
+    const e = keydown();
+    field.fire("keydown", e);
+    expect(submitted).toBe(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("does not submit on an IME's Enter, during a composition, or on another key", () => {
+    const field = new FakeField();
+    let submitted = 0;
+    listenFormEnter(field, () => submitted++);
+    field.fire("keydown", keydown({ isComposing: true, keyCode: 229 }));
+    field.fire("keydown", keydown({ keyCode: 229 }));
+    field.fire("keydown", keydown({ key: "a", keyCode: 65 }));
+    field.fire("compositionstart");
+    field.fire("keydown", keydown());
+    field.fire("compositionend");
+    expect(submitted).toBe(0);
+    field.fire("keydown", keydown());
+    expect(submitted).toBe(1);
+  });
+
+  it("does not submit on an Enter a list of candidates took", () => {
+    const field = new FakeField();
+    let submitted = 0;
+    let listShown = true;
+    listenFormEnter(field, () => submitted++, () => listShown);
+    field.fire("keydown", keydown());
+    field.fire("keydown", keydown({ defaultPrevented: true }));
+    listShown = false;
+    field.fire("keydown", keydown({ defaultPrevented: true }));
+    expect(submitted).toBe(0);
   });
 });

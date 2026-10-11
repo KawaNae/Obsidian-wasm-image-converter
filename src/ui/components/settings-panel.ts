@@ -1,10 +1,12 @@
 import { EncodeSettings, ImageFormat, Preset, cloneEncode, encodeEquals, presetLabel, resolvePreset } from "../../settings";
 import { ENCODER_LIST, encoderFor } from "../../conversion/encoders";
+import { listenFormEnter } from "./form-enter";
 
 /**
  * The encoding inputs of the converter dialog. Choosing a preset loads its
  * values; changing a value afterwards keeps the preset selected and marks it
- * "(modified)" until the values equal the preset's again.
+ * "(modified)" until the values equal the preset's again. An Enter in a
+ * number field takes the value typed in it, then submits the dialog.
  */
 export class SettingsPanel {
     element: HTMLDivElement;
@@ -15,6 +17,7 @@ export class SettingsPanel {
     /** Working copy edited by the inputs; presets themselves are never mutated. */
     private encode: EncodeSettings;
     private onChange: () => void;
+    private onSubmit: () => void;
 
     private presetSelect!: HTMLSelectElement;
     private formatSelect!: HTMLSelectElement;
@@ -28,14 +31,16 @@ export class SettingsPanel {
     /**
      * @param presets - presets to choose from
      * @param defaultPresetId - preset selected initially
+     * @param onSubmit - an Enter in a number field: convert, as the button does
      */
-    constructor(presets: Preset[], defaultPresetId: string, onChange: () => void) {
+    constructor(presets: Preset[], defaultPresetId: string, onChange: () => void, onSubmit: () => void) {
         this.presets = presets;
         const initial = resolvePreset({ presets, defaultPresetId }, defaultPresetId);
         this.defaultPresetId = initial?.id ?? defaultPresetId;
         this.selectedPresetId = this.defaultPresetId;
         this.encode = cloneEncode(initial?.encode ?? presets[0].encode);
         this.onChange = onChange;
+        this.onSubmit = onSubmit;
         this.element = document.createElement("div");
         this.render();
     }
@@ -156,7 +161,14 @@ export class SettingsPanel {
         input.step = String(step);
         input.value = String(initial);
 
-        input.addEventListener("change", () => onChange(parseFloat(input.value) || 0));
+        // The value is taken on "change", which an Enter does not fire
+        // before its keydown: the Enter takes the value typed so far itself.
+        const take = () => onChange(parseFloat(input.value) || 0);
+        input.addEventListener("change", take);
+        listenFormEnter(input, () => {
+            take();
+            this.onSubmit();
+        });
 
         row.appendChild(lbl);
         row.appendChild(input);
