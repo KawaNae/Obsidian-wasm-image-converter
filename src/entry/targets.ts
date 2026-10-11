@@ -24,25 +24,47 @@ export function isAutoConvertTarget(file: IncomingFile, extensions: readonly str
 
 /**
  * What auto-convert does with a dropped or pasted file: "convert" a target
- * image, or "attach" any other file as it is, under its own name.
+ * image, "attach" any other file as it is, under its own name, or "link"
+ * a file that is already in the vault, without copying it.
  */
-export type IncomingAction = "convert" | "attach";
+export type IncomingAction = "convert" | "attach" | "link";
 
 /**
  * The action for each file of a drop or paste, in the order of the files.
- * Null when no file is a target image: then the event is left to Obsidian.
- * Once auto-convert takes the event over, the other files are attached as
- * Obsidian would, so that none of them is lost.
+ * Null when no file is a target image from outside the vault: then the
+ * event is left to Obsidian, which links the files of the vault and
+ * attaches the others itself. Once auto-convert takes the event over, it
+ * links the files of the vault as Obsidian would, and attaches the other
+ * files, so that none of them is lost or copied.
+ *
+ * @param inVault - whether a file is a file of the vault (a drop on the
+ *   desktop can tell; see vault-file.ts)
  */
 export function planIncoming<T extends IncomingFile>(
   files: readonly T[],
-  extensions: readonly string[]
+  extensions: readonly string[],
+  inVault: (file: T) => boolean = () => false
 ): { file: T; action: IncomingAction }[] | null {
   const plan = files.map(file => ({
     file,
-    action: (isAutoConvertTarget(file, extensions) ? "convert" : "attach") as IncomingAction,
+    action: (inVault(file) ? "link" : isAutoConvertTarget(file, extensions) ? "convert" : "attach") as IncomingAction,
   }));
   return plan.some(p => p.action === "convert") ? plan : null;
+}
+
+/**
+ * Vault path of the file at the absolute path `filePath`, or null when it
+ * is not under `basePath`, the vault's folder. Both "/" and "\" separate
+ * the parts; the vault's folder is compared without regard to case, as the
+ * file systems of macOS and Windows do, and the rest keeps its own case.
+ */
+export function vaultRelativePath(filePath: string, basePath: string): string | null {
+  const file = filePath.replace(/\\/g, "/");
+  const base = basePath.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (file === "" || base === "") return null;
+  if (file.length <= base.length + 1 || file[base.length] !== "/") return null;
+  if (file.slice(0, base.length).toLowerCase() !== base.toLowerCase()) return null;
+  return file.slice(base.length + 1);
 }
 
 /** Whether an incoming file may be an (animated) GIF. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   batchSummary, batchTargets, countByExtension, emptyTally, isAutoConvertTarget,
-  isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming,
+  isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming, vaultRelativePath,
 } from "./targets";
 
 const EXTS = ["jpg", "jpeg", "png", "gif", "bmp"];
@@ -112,5 +112,49 @@ describe("batchSummary", () => {
 
   it("says where a cancel stopped", () => {
     expect(batchSummary({ ...emptyTally(10), processed: 3, cancelled: true })).toBe("Batch conversion cancelled (3/10)\nConverted: 0");
+  });
+});
+
+describe("planIncoming with files of the vault", () => {
+  const inVault = { name: "in.png", type: "image/png" };
+  const outPng = { name: "out.png", type: "image/png" };
+  const outPdf = { name: "out.pdf", type: "application/pdf" };
+  const isIn = (f: { name: string }) => f.name.startsWith("in");
+
+  it("leaves a drop of files of the vault only to Obsidian", () => {
+    expect(planIncoming([inVault], EXTS, isIn)).toBeNull();
+    expect(planIncoming([inVault, { name: "in2.md", type: "" }], EXTS, isIn)).toBeNull();
+  });
+
+  it("leaves it to Obsidian without a target image from outside", () => {
+    expect(planIncoming([inVault, outPdf], EXTS, isIn)).toBeNull();
+  });
+
+  it("links the files of the vault, converts and attaches the others, keeping the order", () => {
+    expect(planIncoming([inVault, outPdf, outPng], EXTS, isIn)).toEqual([
+      { file: inVault, action: "link" },
+      { file: outPdf, action: "attach" },
+      { file: outPng, action: "convert" },
+    ]);
+  });
+});
+
+describe("vaultRelativePath", () => {
+  it("gives the path under the vault's folder", () => {
+    expect(vaultRelativePath("/Users/me/Vault/Notes/a.png", "/Users/me/Vault")).toBe("Notes/a.png");
+    expect(vaultRelativePath("/Users/me/Vault/a.png", "/Users/me/Vault/")).toBe("a.png");
+  });
+
+  it("is null outside the vault, for the folder itself, and for a folder with a longer name", () => {
+    expect(vaultRelativePath("/Users/me/Downloads/a.png", "/Users/me/Vault")).toBeNull();
+    expect(vaultRelativePath("/Users/me/Vault", "/Users/me/Vault")).toBeNull();
+    expect(vaultRelativePath("/Users/me/Vault/", "/Users/me/Vault")).toBeNull();
+    expect(vaultRelativePath("/Users/me/Vault2/a.png", "/Users/me/Vault")).toBeNull();
+    expect(vaultRelativePath("", "/Users/me/Vault")).toBeNull();
+  });
+
+  it("reads Windows paths, ignoring the case of the vault's folder but not of the rest", () => {
+    expect(vaultRelativePath("C:\\Obsidian\\Dev\\Notes\\A.png", "C:\\Obsidian\\Dev")).toBe("Notes/A.png");
+    expect(vaultRelativePath("c:\\obsidian\\dev\\Notes\\A.png", "C:\\Obsidian\\Dev")).toBe("Notes/A.png");
   });
 });
