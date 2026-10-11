@@ -156,7 +156,7 @@ npm run build  # tsc 型チェック → production ビルド
 ```
 src/
 ├── main.ts                    # プラグインエントリーポイント
-├── settings.ts                # 設定型定義・デフォルト値
+├── settings.ts                # 設定型定義・デフォルト値、対応する拡張子（自動変換と一括変換の対象、ダイアログ）
 ├── settings-tab.ts            # 設定タブ UI（タブベース）
 ├── globals.d.ts               # グローバル型宣言 (__BUILD_TIME__)
 ├── conversion/                # 変換の層（Obsidian の保存や UI に依存しない）
@@ -182,7 +182,7 @@ src/
 │   ├── drop-position.ts       # 公開の API でドロップの位置を得る（EditorView.findFromDOM、posAtCoords）
 │   ├── batch-convert.ts       # 一括変換（vault 全体、フォルダ）、確認のダイアログ、進捗の Notice
 │   ├── vault-file.ts          # ドロップとペーストのファイルの絶対パスから vault のファイルを引く（webUtils）
-│   └── targets.ts             # 純粋: 対象の判定、vault の中のファイルの表、リンクの連結、一括変換の対象と集計
+│   └── targets.ts             # 純粋: 対象の判定、vault の中のファイルの表、リンクの連結、失敗の通知、一括変換の対象と集計
 ├── ui/                        # 変換のダイアログ（右クリックメニューの置き換えのモードを含む）
 │   ├── converter-dialog.ts    # openConverterDialog: 殻 OverlayShell に ConverterBody を載せる
 │   ├── converter-body.ts      # ダイアログの中身。予測のデコードを変換でも使う
@@ -199,7 +199,7 @@ src/
 │   │   └── layer-order.ts     # 純粋: 窓の後ろに body へ置かれた要素（候補の一覧）を窓の内側とみなす
 │   └── components/
 │       ├── drop-zone.ts       # ドロップ、ファイルの選択、paste を受ける。paste は全面に重ねた空の入力の層（contenteditable）で受ける
-│       ├── drop-zone-input.ts # 純粋: paste のファイルの取り出し、端末ごとの案内の文
+│       ├── drop-zone-input.ts # 純粋: paste のファイルと画像の取り出し、端末ごとの案内の文、対応する形式の名前
 │       ├── folder-suggest.ts  # 保存先の欄のフォルダの候補
 │       ├── shown-suggest.ts   # 候補の一覧の基底。IME の Enter で選ばず、一覧の間はホットキーを止める
 │       ├── form-enter.ts      # 純粋: IME の確定の Enter の判定
