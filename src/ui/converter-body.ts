@@ -41,8 +41,10 @@ interface DecodeSource {
 
 /**
  * Content of the converter dialog, independent of the window it is shown
- * in. The host calls build() once with its body element and dispose() when
- * it closes; the body asks the host to close after a conversion.
+ * in. The host calls build() once with its body and footer elements and
+ * dispose() when it closes; the body asks the host to close after a
+ * conversion. The convert button and the progress go in the footer, which
+ * stays in sight while the body scrolls.
  *
  * The result (embed links of the saved images, separated by an empty line, or undefined)
  * is delivered exactly once, after the window closed.
@@ -94,7 +96,7 @@ export class ConverterBody {
         this.onResult(value);
     }
 
-    build(bodyEl: HTMLElement) {
+    build(bodyEl: HTMLElement, footerEl: HTMLElement) {
         this.settingsPanel = new SettingsPanel(
             this.settings.presets,
             this.settings.defaultPresetId,
@@ -125,13 +127,13 @@ export class ConverterBody {
         this.infoDiv.style.textAlign = "center";
 
         // Progress bar (shown for several files)
-        this.progressContainer = bodyEl.createDiv({ cls: "wasm-image-progress" });
+        this.progressContainer = footerEl.createDiv({ cls: "wasm-image-progress" });
         this.progressContainer.style.display = "none";
         const progressBar = this.progressContainer.createDiv({ cls: "wasm-image-progress__bar" });
         this.progressFill = progressBar.createDiv({ cls: "wasm-image-progress__fill" });
         this.progressText = this.progressContainer.createDiv({ cls: "wasm-image-progress__text" });
 
-        const btnRow = bodyEl.createDiv({ cls: "wasm-image-modal__btn-row" });
+        const btnRow = footerEl.createDiv({ cls: "wasm-image-modal__btn-row" });
         btnRow.style.justifyContent = "center";
         this.convertBtn = btnRow.createEl("button", { cls: "wasm-image-modal__btn mod-cta" });
         this.convertBtn.style.width = "100%";

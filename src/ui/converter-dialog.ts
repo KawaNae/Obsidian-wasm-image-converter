@@ -16,7 +16,7 @@ export function openConverterDialog(app: App, settings: PluginSettings, request:
             title: "Image Converter",
             panelClass: "wasm-image-modal",
             keymap: app.keymap,
-            build: (bodyEl) => body.build(bodyEl),
+            build: (bodyEl, footerEl) => body.build(bodyEl, footerEl),
             onClose: () => body.dispose(),
         });
     });

@@ -44,8 +44,9 @@ class MiniEventTarget {
     }
 }
 
-class MockPanel extends MiniEventTarget {
-    style: { height: string; paddingBottom: string } = { height: '', paddingBottom: '' };
+/** The overlay's body: the part of the panel that scrolls, a flex item between the title and the footer. */
+class MockScroller extends MiniEventTarget {
+    style: { height: string; flex: string; paddingBottom: string } = { height: '', flex: '', paddingBottom: '' };
     scrollTop = 0;
     /** No scroll room beyond what is shown, unless a test gives some. */
     scrollHeight = 400;
@@ -148,8 +149,8 @@ const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 class MockWindow extends MiniEventTarget {
     innerHeight = 800;
     visualViewport: MockVisualViewport | undefined;
-    getComputedStyle(panel: MockPanel) {
-        return { paddingBottom: `${panel.computedPaddingBottom}px` } as CSSStyleDeclaration;
+    getComputedStyle(scroller: MockScroller) {
+        return { paddingBottom: `${scroller.computedPaddingBottom}px` } as CSSStyleDeclaration;
     }
 }
 
@@ -159,10 +160,10 @@ function setup(opts: { withVisualViewport?: boolean; vvHeight?: number } = {}) {
         win.visualViewport = new MockVisualViewport(opts.vvHeight ?? win.innerHeight);
     }
     const container = new MockContainer();
-    const panel = new MockPanel();
+    const scroller = new MockScroller();
     const kac = new KeyboardAwareContainer(container as any, win as any);
-    kac.scrollTarget = panel as any;
-    return { win, container, panel, kac };
+    kac.scrollTarget = scroller as any;
+    return { win, container, scroller, kac };
 }
 
 /** A container whose sheet is sliding up (one animation running), with a field focused in it. */
@@ -171,21 +172,21 @@ function setupAnimated(fieldBottom: number, ...animations: MockAnimation[]) {
     win.visualViewport = new MockVisualViewport(800);
     const container = new AnimatedContainer();
     container.animations = animations;
-    const panel = new MockPanel();
+    const scroller = new MockScroller();
     const scrolls: number[] = [];
-    const scrollBy = panel.scrollBy.bind(panel);
-    panel.scrollBy = (o) => { scrolls.push(o.top); scrollBy(o); };
+    const scrollBy = scroller.scrollBy.bind(scroller);
+    scroller.scrollBy = (o) => { scrolls.push(o.top); scrollBy(o); };
     const input = new MockInput(fieldBottom);
     container.adopt(input);
     container.ownerDocument.activeElement = input;
     const kac = new KeyboardAwareContainer(container as any, win as any);
-    kac.scrollTarget = panel as any;
+    kac.scrollTarget = scroller as any;
     kac.attach();
     const openKeyboard = () => {
         win.visualViewport!.height = 500; // keyboardTop 500
         win.visualViewport!.dispatch('resize');
     };
-    return { win, container, panel, scrolls, input, kac, openKeyboard };
+    return { win, container, scroller, scrolls, input, kac, openKeyboard };
 }
 
 describe('KeyboardAwareContainer', () => {
@@ -195,8 +196,8 @@ describe('KeyboardAwareContainer', () => {
     });
 
     describe('visualViewport-based detection', () => {
-        it('scrolls the panel and injects padding when the keyboard covers the focused input', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+        it('scrolls the body and injects padding when the keyboard covers the focused input', () => {
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750); // near the bottom of an 800px-tall screen
             container.ownerDocument.activeElement = input;
             container.adopt(input);
@@ -206,13 +207,14 @@ describe('KeyboardAwareContainer', () => {
             win.visualViewport!.dispatch('resize');
 
             // keyboardTop = offsetTop(0) + height(500) = 500; overshoot = 750 - 500 + 10 = 260
-            expect(panel.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
-            expect(panel.style.paddingBottom).toBe('260px');
-            expect(panel.style.height).toBe('400px'); // locked at rectHeight captured on first correction
+            expect(scroller.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
+            expect(scroller.style.paddingBottom).toBe('260px');
+            expect(scroller.style.height).toBe('400px'); // locked at rectHeight captured on first correction
+            expect(scroller.style.flex).toBe('none'); // as a flex item too: neither it nor the panel grows
         });
 
         it('does nothing when the focused input does not overlap the keyboard', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(100); // well above where the keyboard will sit
             container.ownerDocument.activeElement = input;
             container.adopt(input);
@@ -221,12 +223,13 @@ describe('KeyboardAwareContainer', () => {
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize');
 
-            expect(panel.lastScrollBy).toBeNull();
-            expect(panel.style.paddingBottom).toBe('');
+            expect(scroller.lastScrollBy).toBeNull();
+            expect(scroller.style.paddingBottom).toBe('');
+            expect(scroller.style.flex).toBe('');
         });
 
         it('does not treat a small viewport shrink (<=50px) as the keyboard opening', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
@@ -235,11 +238,11 @@ describe('KeyboardAwareContainer', () => {
             win.visualViewport!.height = 750; // exactly 50px shrink — boundary, not open
             win.visualViewport!.dispatch('resize');
 
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
         });
 
         it('treats a >50px shrink as the keyboard opening', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
@@ -248,17 +251,18 @@ describe('KeyboardAwareContainer', () => {
             win.visualViewport!.height = 749; // 51px shrink — just over the threshold
             win.visualViewport!.dispatch('resize');
 
-            expect(panel.lastScrollBy).not.toBeNull();
+            expect(scroller.lastScrollBy).not.toBeNull();
         });
 
         it('restores height/padding/scrollTop when the keyboard closes', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
-            panel.style.height = 'auto';
-            panel.style.paddingBottom = '8px';
-            panel.scrollTop = 5;
+            scroller.style.height = 'auto';
+            scroller.style.flex = '1 1 0%';
+            scroller.style.paddingBottom = '8px';
+            scroller.scrollTop = 5;
             kac.attach();
 
             win.visualViewport!.height = 500;
@@ -267,28 +271,29 @@ describe('KeyboardAwareContainer', () => {
             win.visualViewport!.height = 800;
             win.visualViewport!.dispatch('resize'); // closes
 
-            expect(panel.style.height).toBe('auto');
-            expect(panel.style.paddingBottom).toBe('8px');
-            expect(panel.lastScrollTo).toEqual({ top: 5, behavior: 'instant' });
+            expect(scroller.style.height).toBe('auto');
+            expect(scroller.style.flex).toBe('1 1 0%');
+            expect(scroller.style.paddingBottom).toBe('8px');
+            expect(scroller.lastScrollTo).toEqual({ top: 5, behavior: 'instant' });
         });
 
-        it('pads only what the panel lacks of the scroll room', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+        it('pads only what the scroller lacks of the scroll room', () => {
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
-            panel.scrollHeight = 500; // 100px left to scroll
+            scroller.scrollHeight = 500; // 100px left to scroll
             kac.attach();
 
             win.visualViewport!.height = 500; // overshoot 260
             win.visualViewport!.dispatch('resize');
 
-            expect(panel.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
-            expect(panel.style.paddingBottom).toBe('160px');
+            expect(scroller.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
+            expect(scroller.style.paddingBottom).toBe('160px');
         });
 
-        it('accumulates extraPad across repeated corrections without re-locking the panel height', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+        it('accumulates extraPad across repeated corrections without re-locking the scroller height', () => {
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
@@ -296,13 +301,13 @@ describe('KeyboardAwareContainer', () => {
 
             win.visualViewport!.height = 500; // overshoot 260, extraPad=260
             win.visualViewport!.dispatch('resize');
-            const heightAfterFirst = panel.style.height;
+            const heightAfterFirst = scroller.style.height;
 
             input.bottom = 900; // input moved further down (e.g. new field below)
             win.visualViewport!.dispatch('resize'); // same vv.height, re-evaluates via scroll listener path too — trigger via resize again
 
             // second correction should add on top of the first, not reset it
-            expect(panel.style.height).toBe(heightAfterFirst); // height stays locked, not recomputed
+            expect(scroller.style.height).toBe(heightAfterFirst); // height stays locked, not recomputed
         });
     });
 
@@ -319,58 +324,58 @@ describe('KeyboardAwareContainer', () => {
         }
 
         it('keeps the caret above the keyboard, not the field\'s bottom', () => {
-            const { win, panel, kac } = editable(1400, 700);
+            const { win, scroller, kac } = editable(1400, 700);
             kac.attach();
 
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize');
 
             // caret 700 - keyboardTop 500 + 10 = 210 (the field's bottom would give 910)
-            expect(panel.lastScrollBy).toEqual({ top: 210, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 210, behavior: 'instant' });
         });
 
         it('does nothing while the caret is above the keyboard, however far the field runs below it', () => {
-            const { win, panel, kac } = editable(1400, 300);
+            const { win, scroller, kac } = editable(1400, 300);
             kac.attach();
 
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize');
 
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
         });
 
         it('follows the caret as the selection moves while the keyboard is open', () => {
-            const { win, doc, panel, text, kac } = editable(1400, 300);
+            const { win, doc, scroller, text, kac } = editable(1400, 300);
             kac.attach();
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize');
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
 
             text.caretBottom = 560; // typed on to a line under the keyboard's edge
             doc.dispatch('selectionchange');
 
-            expect(panel.lastScrollBy).toEqual({ top: 70, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 70, behavior: 'instant' });
         });
 
         it('does not follow the selection while the keyboard is closed', () => {
-            const { doc, panel, text, kac } = editable(1400, 300);
+            const { doc, scroller, text, kac } = editable(1400, 300);
             kac.attach();
 
             text.caretBottom = 900;
             doc.dispatch('selectionchange');
 
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
         });
 
         it('takes the line the caret is in where the caret has no box of its own (an empty line)', () => {
-            const { win, doc, field, panel, kac } = editable(650, null);
+            const { win, doc, field, scroller, kac } = editable(650, null);
             doc.selection = { focusNode: field, focusOffset: 0 };
             kac.attach();
 
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize');
 
-            expect(panel.lastScrollBy).toEqual({ top: 160, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 160, behavior: 'instant' });
         });
 
         it('stops following the selection once detached', () => {
@@ -386,7 +391,7 @@ describe('KeyboardAwareContainer', () => {
 
     describe('native (Capacitor) keyboard events', () => {
         it('opens on keyboardWillShow with a keyboardHeight and reacts even with no visualViewport', () => {
-            const { win, container, panel, kac } = setup({ withVisualViewport: false });
+            const { win, container, scroller, kac } = setup({ withVisualViewport: false });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
@@ -395,21 +400,21 @@ describe('KeyboardAwareContainer', () => {
             win.dispatch('keyboardWillShow', { keyboardHeight: 300 });
 
             // keyboardTop = innerHeight(800) - native(300) = 500; overshoot = 750-500+10=260
-            expect(panel.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
         });
 
         it('closes and restores on keyboardWillHide', () => {
-            const { win, container, panel, kac } = setup({ withVisualViewport: false });
+            const { win, container, scroller, kac } = setup({ withVisualViewport: false });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
-            panel.scrollTop = 3;
+            scroller.scrollTop = 3;
             kac.attach();
 
             win.dispatch('keyboardWillShow', { keyboardHeight: 300 });
             win.dispatch('keyboardWillHide');
 
-            expect(panel.lastScrollTo).toEqual({ top: 3, behavior: 'instant' });
+            expect(scroller.lastScrollTo).toEqual({ top: 3, behavior: 'instant' });
         });
     });
 
@@ -417,7 +422,7 @@ describe('KeyboardAwareContainer', () => {
         beforeEach(() => vi.useFakeTimers());
 
         it('re-corrects for a newly focused input while the keyboard is already open (after the 50ms debounce)', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const inputA = new MockInput(200); // does not overlap
             const inputB = new MockInput(750); // overlaps
             container.adopt(inputA);
@@ -427,17 +432,17 @@ describe('KeyboardAwareContainer', () => {
 
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize'); // keyboard opens, inputA doesn't need correction
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
 
             container.ownerDocument.activeElement = inputB;
             container.dispatch('focusin', { target: inputB });
             vi.advanceTimersByTime(50);
 
-            expect(panel.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 260, behavior: 'instant' });
         });
 
         it('restores 200ms after focus leaves the container with no input focused', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
@@ -449,11 +454,11 @@ describe('KeyboardAwareContainer', () => {
             container.dispatch('focusout');
             vi.advanceTimersByTime(200);
 
-            expect(panel.style.height).toBe(''); // restored to the pre-correction empty string
+            expect(scroller.style.height).toBe(''); // restored to the pre-correction empty string
         });
 
         it('does not restore on focusout if focus moved to another input inside the container', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const inputA = new MockInput(750);
             const inputB = new MockInput(750);
             container.adopt(inputA);
@@ -462,32 +467,32 @@ describe('KeyboardAwareContainer', () => {
             kac.attach();
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize');
-            const lockedHeight = panel.style.height;
+            const lockedHeight = scroller.style.height;
 
             container.ownerDocument.activeElement = inputB; // focus moved before the blur timer fires
             container.dispatch('focusout');
             vi.advanceTimersByTime(200);
 
-            expect(panel.style.height).toBe(lockedHeight); // still corrected, not restored
+            expect(scroller.style.height).toBe(lockedHeight); // still corrected, not restored
         });
     });
 
     describe('measuring once the container has settled', () => {
         it('does not measure while the sheet slides up, and measures where the field comes to rest once it ends', async () => {
             const slide = new MockAnimation();
-            const { container, panel, input, openKeyboard } = setupAnimated(871, slide);
+            const { container, scroller, input, openKeyboard } = setupAnimated(871, slide);
 
             openKeyboard(); // midway the field is still below the window
             expect(container.subtreeAsked).toBe(true);
             await flush();
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
 
             input.bottom = 557; // the sheet in place
             slide.end();
             await flush();
 
             // 557 - 500 + 10 = 67, not the 381 the field midway would give
-            expect(panel.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
         });
 
         it('measures once for every ask made during the wait (the keyboard\'s events, a focus, the caret)', async () => {
@@ -510,34 +515,34 @@ describe('KeyboardAwareContainer', () => {
         it('waits for every animation running in the container (the backdrop fading, the panel sliding)', async () => {
             const fade = new MockAnimation();
             const slide = new MockAnimation();
-            const { panel, input, openKeyboard } = setupAnimated(871, fade, slide);
+            const { scroller, input, openKeyboard } = setupAnimated(871, fade, slide);
 
             openKeyboard();
             fade.end();
             await flush();
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
 
             input.bottom = 557;
             slide.end();
             await flush();
-            expect(panel.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
         });
 
         it('measures after an animation cancelled (the sheet dragged by its handle)', async () => {
             const slide = new MockAnimation();
-            const { panel, input, openKeyboard } = setupAnimated(871, slide);
+            const { scroller, input, openKeyboard } = setupAnimated(871, slide);
 
             openKeyboard();
             input.bottom = 557;
             slide.cancel();
             await flush();
 
-            expect(panel.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
         });
 
         it('measures nothing when the keyboard closed during the wait', async () => {
             const slide = new MockAnimation();
-            const { win, panel, input, openKeyboard } = setupAnimated(871, slide);
+            const { win, scroller, input, openKeyboard } = setupAnimated(871, slide);
 
             openKeyboard();
             win.visualViewport!.height = 800;
@@ -546,12 +551,12 @@ describe('KeyboardAwareContainer', () => {
             slide.end();
             await flush();
 
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
         });
 
         it('measures nothing when the container was detached (closed) during the wait', async () => {
             const slide = new MockAnimation();
-            const { panel, input, kac, openKeyboard } = setupAnimated(871, slide);
+            const { scroller, input, kac, openKeyboard } = setupAnimated(871, slide);
 
             openKeyboard();
             kac.detach();
@@ -559,12 +564,12 @@ describe('KeyboardAwareContainer', () => {
             slide.end();
             await flush();
 
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
         });
 
         it('measures the field focused when the wait ends, not the one focused when it began', async () => {
             const slide = new MockAnimation();
-            const { container, panel, input, openKeyboard } = setupAnimated(871, slide);
+            const { container, scroller, input, openKeyboard } = setupAnimated(871, slide);
             const other = new MockInput(600);
             container.adopt(other);
 
@@ -574,41 +579,41 @@ describe('KeyboardAwareContainer', () => {
             slide.end();
             await flush();
 
-            expect(panel.lastScrollBy).toEqual({ top: 110, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 110, behavior: 'instant' });
         });
 
         it('measures at once when no animation runs, an endless one among them', () => {
             const spinner = new MockAnimation(Infinity);
             const paused = new MockAnimation(150, 'paused');
-            const { panel, openKeyboard } = setupAnimated(557, spinner, paused);
+            const { scroller, openKeyboard } = setupAnimated(557, spinner, paused);
 
             openKeyboard();
 
-            expect(panel.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
+            expect(scroller.lastScrollBy).toEqual({ top: 67, behavior: 'instant' });
         });
     });
 
     describe('detach', () => {
         it('stops reacting to visualViewport/native events and restores state', () => {
-            const { win, container, panel, kac } = setup({ vvHeight: 800 });
+            const { win, container, scroller, kac } = setup({ vvHeight: 800 });
             const input = new MockInput(750);
             container.ownerDocument.activeElement = input;
             container.adopt(input);
             kac.attach();
             win.visualViewport!.height = 500;
             win.visualViewport!.dispatch('resize');
-            expect(panel.style.height).not.toBe('');
+            expect(scroller.style.height).not.toBe('');
 
             kac.detach();
 
-            expect(panel.style.height).toBe(''); // restore() ran as part of detach
+            expect(scroller.style.height).toBe(''); // restore() ran as part of detach
             expect(kac.scrollTarget).toBeNull();
 
             // Further events must not reach the (now-detached) handlers.
-            panel.lastScrollBy = null;
+            scroller.lastScrollBy = null;
             win.visualViewport!.height = 300;
             win.visualViewport!.dispatch('resize');
-            expect(panel.lastScrollBy).toBeNull();
+            expect(scroller.lastScrollBy).toBeNull();
         });
 
         it('removes every listener it registered in attach()', () => {

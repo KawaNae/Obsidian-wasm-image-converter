@@ -15,8 +15,12 @@ export interface OverlayOpenOptions {
     title: string;
     /** Added to the panel: the dialog's own styles hang from it */
     panelClass?: string;
-    /** Fills the body once, as the overlay opens */
-    build(bodyEl: HTMLElement): void;
+    /**
+     * Fills the body and the footer once, as the overlay opens. The footer
+     * holds the row of buttons that stays at the bottom of the panel while
+     * the body scrolls above it; left empty, it is not shown.
+     */
+    build(bodyEl: HTMLElement, footerEl: HTMLElement): void;
     /**
      * Obsidian's keymap (`app.keymap`): its hotkeys are kept out while the
      * focus is in the overlay (HotkeyShield). Escape and the keys of the
@@ -37,16 +41,20 @@ export interface OverlayOpenOptions {
  * The window our dialogs are shown in, in place of Obsidian's Modal: a
  * dialog in the middle of the window, and on a phone a bottom sheet. The
  * DOM is put on the body (root > backdrop + panel > handle, close button,
- * title, body), and CSS alone switches the two presentations by the
+ * title, body, footer), and CSS alone switches the two presentations by the
  * `.is-phone` class Obsidian gives the body, so an iPad shows the dialog.
+ * Only the body scrolls; the footer with the buttons stays at the bottom
+ * of the dialog and of the sheet.
  *
  * What a Modal does by itself, the shell does on its own: Escape and a
  * press outside close it, the focus in it keeps Obsidian's hotkeys out
  * (HotkeyShield), and the user's "back" (Android's back gesture, the mouse's
  * back button) closes it (holdHistoryBack). On a phone, the sheet is closed
  * by pulling it down by its handle or from the top of its body, and the
- * field the on-screen keyboard would cover is scrolled above it
- * (KeyboardAwareContainer).
+ * field the on-screen keyboard would cover is scrolled above it in the body
+ * (KeyboardAwareContainer). The sheet does not move up with the keyboard,
+ * as Obsidian's own sheets do not: the footer stays under the keyboard
+ * while it is open.
  *
  * The surface of the overlay is its panel and what Obsidian opens on top of
  * it while it is open (an input suggest's list on the body: inLayerAbove).
@@ -116,7 +124,8 @@ export class OverlayShell {
         panel.createDiv({ cls: "wasm-image-overlay__title", text: opts.title });
 
         const body = panel.createDiv({ cls: "wasm-image-overlay__body" });
-        opts.build(body);
+        const footer = panel.createDiv({ cls: "wasm-image-overlay__footer" });
+        opts.build(body, footer);
 
         // On-screen keyboard (mobile)
         this.kbAware = new KeyboardAwareContainer(root, hostWin);

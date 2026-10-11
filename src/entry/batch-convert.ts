@@ -1,4 +1,4 @@
-import { App, Notice, Setting, TFile, TFolder } from "obsidian";
+import { App, ButtonComponent, Notice, Setting, TFile, TFolder } from "obsidian";
 import { EncodeSettings, PluginSettings, Preset, resolvePreset } from "../settings";
 import { convertBlob } from "../conversion/convert";
 import { encoderFor } from "../conversion/encoders";
@@ -119,7 +119,7 @@ function chooseBatchPreset(app: App, settings: PluginSettings, scopeLabel: strin
       panelClass: "wasm-image-batch-dialog",
       keymap: app.keymap,
       onClose: () => resolve(chosen),
-      build: (contentEl) => {
+      build: (contentEl, footerEl) => {
         const counts = countByExtension(targets).map(([ext, n]) => `${n} × ${ext}`).join(", ");
         contentEl.createEl("p", { text: `${targets.length} images in ${scopeLabel}: ${counts}` });
 
@@ -147,17 +147,17 @@ function chooseBatchPreset(app: App, settings: PluginSettings, scopeLabel: strin
             "Obsidian asks for every renamed image whether to update its links.",
         });
 
-        new Setting(contentEl)
-          .addButton(button => button
-            .setButtonText("Cancel")
-            .onClick(() => shell.close()))
-          .addButton(button => button
-            .setButtonText("Convert")
-            .setCta()
-            .onClick(() => {
-              chosen = preset;
-              shell.close();
-            }));
+        const buttons = footerEl.createDiv({ cls: "modal-button-container" });
+        new ButtonComponent(buttons)
+          .setButtonText("Cancel")
+          .onClick(() => shell.close());
+        new ButtonComponent(buttons)
+          .setButtonText("Convert")
+          .setCta()
+          .onClick(() => {
+            chosen = preset;
+            shell.close();
+          });
       },
     });
   });

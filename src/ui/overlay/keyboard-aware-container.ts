@@ -4,12 +4,16 @@ import { trackKeyboard, nativeKeyboardHeight, keyboardTop } from "./keyboard-sta
 /**
  * Mobile virtual keyboard awareness for fixed-position containers.
  *
- * Never moves the container or the panel itself. When the keyboard
- * covers the focused field, the panel's height is locked at its
- * current value, bottom padding is injected where the panel lacks the
- * scroll room, and the contents are scrolled so what is typed at sits
- * at the keyboard's top edge. Everything (height / padding / scrollTop)
- * is restored when the keyboard closes.
+ * Never moves the container or the panel in it. What it works on is the
+ * scroll target: the part of the panel that scrolls (the overlay's body),
+ * a flex item between parts that stay (the title above, the footer with
+ * the buttons below). When the keyboard covers the focused field, the
+ * scroll target's height is locked at its current value (as a flex item
+ * too, so that neither it nor the panel grows), bottom padding is injected
+ * where it lacks the scroll room, and it is scrolled so what is typed at
+ * sits at the keyboard's top edge. The parts that stay are left where they
+ * are: the footer stays under the keyboard. Everything (height / flex /
+ * padding / scrollTop) is restored when the keyboard closes.
  *
  * A field is an input, a textarea, or an editable element
  * (contenteditable: a CodeMirror editor's content). What is typed at is
@@ -51,8 +55,8 @@ export class KeyboardAwareContainer {
     private focusTimer: ReturnType<typeof setTimeout> | null = null;
     private selectionHandler: (() => void) | null = null;
     private selectionFrame: number | null = null;
-    /** panel inline styles + scrollTop as they were before we touched them */
-    private saved: { height: string; paddingBottom: string; scrollTop: number } | null = null;
+    /** The scroll target's inline styles + scrollTop as they were before we touched them */
+    private saved: { height: string; flex: string; paddingBottom: string; scrollTop: number } | null = null;
     /** CSS-computed padding-bottom (px) captured before inline override */
     private basePad = 0;
     /** cumulative injected scroll room (px) */
@@ -127,7 +131,7 @@ export class KeyboardAwareContainer {
         this.container.ownerDocument.addEventListener("selectionchange", this.selectionHandler);
     }
 
-    /** Whether the keyboard is open, from both sources; adjusts or restores the panel. */
+    /** Whether the keyboard is open, from both sources; adjusts or restores the scroll target. */
     private syncState(): void {
         const vv = this.win.visualViewport;
         const vvKb = vv ? this.win.innerHeight - vv.height : 0;
@@ -197,13 +201,13 @@ export class KeyboardAwareContainer {
     /**
      * Only when what is typed at (an input's or a textarea's bottom, an
      * editable element's caret) is below the keyboard's top, scrolls the
-     * panel by exactly the shortfall. The panel's height is locked, so the
-     * padding injected does not grow or move the panel; padding is added
-     * only for the scroll room that is lacking.
+     * scroll target by exactly the shortfall. Its height is locked, so the
+     * padding injected does not grow it or the panel around it; padding is
+     * added only for the scroll room that is lacking.
      */
     private ensureAboveKeyboard(target: HTMLElement): void {
-        const panel = this.scrollTarget;
-        if (!panel) return;
+        const scroller = this.scrollTarget;
+        if (!scroller) return;
 
         const kbTop = keyboardTop(this.win);
         const bottom = target.isContentEditable
@@ -214,31 +218,37 @@ export class KeyboardAwareContainer {
 
         if (!this.saved) {
             this.saved = {
-                height: panel.style.height,
-                paddingBottom: panel.style.paddingBottom,
-                scrollTop: panel.scrollTop,
+                height: scroller.style.height,
+                flex: scroller.style.flex,
+                paddingBottom: scroller.style.paddingBottom,
+                scrollTop: scroller.scrollTop,
             };
             this.basePad = parseFloat(
-                this.win.getComputedStyle(panel).paddingBottom) || 0;
+                this.win.getComputedStyle(scroller).paddingBottom) || 0;
             this.extraPad = 0;
-            // Lock the height: the padding from here on only adds scroll room
-            panel.style.height = `${panel.getBoundingClientRect().height}px`;
+            // Lock the height (border-box): the padding from here on only
+            // adds scroll room. As a flex item it would still take its
+            // size from flex and from its content, so it neither grows nor
+            // shrinks from here on.
+            scroller.style.height = `${scroller.getBoundingClientRect().height}px`;
+            scroller.style.flex = "none";
         }
 
-        const room = Math.max(0, (panel.scrollHeight - panel.clientHeight - panel.scrollTop) || 0);
+        const room = Math.max(0, (scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop) || 0);
         if (overshoot > room) {
             this.extraPad += overshoot - room;
-            panel.style.paddingBottom = `${this.basePad + this.extraPad}px`;
+            scroller.style.paddingBottom = `${this.basePad + this.extraPad}px`;
         }
-        panel.scrollBy({ top: overshoot, behavior: "instant" });
+        scroller.scrollBy({ top: overshoot, behavior: "instant" });
     }
 
     private restore(): void {
         if (!this.saved || !this.scrollTarget) return;
-        const panel = this.scrollTarget;
-        panel.style.height = this.saved.height;
-        panel.style.paddingBottom = this.saved.paddingBottom;
-        panel.scrollTo({ top: this.saved.scrollTop, behavior: "instant" });
+        const scroller = this.scrollTarget;
+        scroller.style.height = this.saved.height;
+        scroller.style.flex = this.saved.flex;
+        scroller.style.paddingBottom = this.saved.paddingBottom;
+        scroller.scrollTo({ top: this.saved.scrollTop, behavior: "instant" });
         this.saved = null;
         this.extraPad = 0;
     }
