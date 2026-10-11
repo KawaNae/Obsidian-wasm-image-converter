@@ -11,8 +11,11 @@ export interface Focusable {
 }
 
 export interface OverlayOpenOptions {
-    /** Shown at the top of the panel, as a Modal's title */
-    title: string;
+    /**
+     * What the dialog is, for a screen reader (the panel's aria-label). No
+     * title is shown: the dialog's own fields say what it is for.
+     */
+    label: string;
     /** Added to the panel: the dialog's own styles hang from it */
     panelClass?: string;
     /**
@@ -41,7 +44,7 @@ export interface OverlayOpenOptions {
  * The window our dialogs are shown in, in place of Obsidian's Modal: a
  * dialog in the middle of the window, and on a phone a bottom sheet. The
  * DOM is put on the body (root > backdrop + panel > handle, close button,
- * title, body, footer), and CSS alone switches the two presentations by the
+ * body, footer), and CSS alone switches the two presentations by the
  * `.is-phone` class Obsidian gives the body, so an iPad shows the dialog.
  * Only the body scrolls; the footer with the buttons stays at the bottom
  * of the dialog and of the sheet.
@@ -112,6 +115,9 @@ export class OverlayShell {
         if (opts.panelClass) panel.addClass(opts.panelClass);
         // Focusable by script only: the focus held when the body names no field
         panel.tabIndex = -1;
+        panel.setAttribute("role", "dialog");
+        panel.setAttribute("aria-modal", "true");
+        panel.setAttribute("aria-label", opts.label);
         this.panelEl = panel;
 
         const handle = panel.createDiv({ cls: "wasm-image-overlay__handle" });
@@ -120,8 +126,6 @@ export class OverlayShell {
         setIcon(closeBtn, "x");
         closeBtn.setAttribute("aria-label", "Close");
         closeBtn.addEventListener("click", () => this.close());
-
-        panel.createDiv({ cls: "wasm-image-overlay__title", text: opts.title });
 
         const body = panel.createDiv({ cls: "wasm-image-overlay__body" });
         const footer = panel.createDiv({ cls: "wasm-image-overlay__footer" });

@@ -115,7 +115,7 @@ function chooseBatchPreset(app: App, settings: PluginSettings, scopeLabel: strin
     const shell = new OverlayShell();
     let chosen: Preset | null = null;
     shell.open({
-      title: "Batch Convert Images",
+      label: "Batch Convert Images",
       panelClass: "wasm-image-batch-dialog",
       keymap: app.keymap,
       onClose: () => resolve(chosen),

@@ -40,7 +40,9 @@
     flex-direction: column;
     width: min(var(--wimg-modal-max-width), calc(100vw - 32px));
     max-height: calc(100% - 64px);
-    padding: 20px 0;
+    /* No title: the top keeps the close button's strip, as an Obsidian
+       modal keeps its header when the title is empty */
+    padding: 48px 0 20px;
     background: var(--modal-background, var(--wimg-bg-primary));
     border: var(--modal-border-width, 1px) solid var(--modal-border-color, var(--wimg-border));
     border-radius: var(--modal-radius, 16px);
@@ -52,14 +54,6 @@
 /* The panel holds the focus when no field is named; it is a surface, not a control */
 .wasm-image-overlay__panel:focus {
     outline: none;
-}
-
-.wasm-image-overlay__title {
-    flex-shrink: 0;
-    margin: 0 56px 16px 24px;
-    font-size: var(--font-ui-large);
-    font-weight: var(--font-semibold, 600);
-    line-height: 1.3;
 }
 
 /* The horizontal space is the body's, not the panel's: overflow-y: auto
@@ -144,13 +138,10 @@
     display: none;
 }
 
-.is-phone .wasm-image-overlay__title {
-    margin: 4px 16px 12px;
-    text-align: center;
-}
-
+/* The body starts 24px under the top of the sheet, the handle included,
+   as the header of Obsidian's own sheets does */
 .is-phone .wasm-image-overlay__body {
-    padding: 0 16px 16px;
+    padding: 8px 16px 16px;
 }
 
 .is-phone .wasm-image-overlay__footer {

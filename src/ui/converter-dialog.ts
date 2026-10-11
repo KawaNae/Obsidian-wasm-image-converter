@@ -13,7 +13,7 @@ export function openConverterDialog(app: App, settings: PluginSettings, request:
         const shell = new OverlayShell();
         const body = new ConverterBody(app, settings, request, shell, resolve);
         shell.open({
-            title: "Image Converter",
+            label: "Image Converter",
             panelClass: "wasm-image-modal",
             keymap: app.keymap,
             build: (bodyEl, footerEl) => body.build(bodyEl, footerEl),
