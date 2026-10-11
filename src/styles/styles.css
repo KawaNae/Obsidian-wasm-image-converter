@@ -1,153 +1,101 @@
 /* ==========================================================================
-   Modal
+   Converter dialog (the overlay's panel, .wasm-image-modal)
+
+   The fields and the buttons are Obsidian's own: their height, radius,
+   border, background and font come from app.css, 30px and 8px on a desktop,
+   44px and round on a phone. Only the layout of the rows is ours.
    ========================================================================== */
 
-.wasm-image-modal__content {
-    margin-bottom: 20px;
+/* The rows fold on the width of the body, not of the window: a narrow
+   desktop window folds them as a phone does */
+.wasm-image-modal .wasm-image-overlay__body {
+    container: wasm-image-converter / inline-size;
 }
 
-.wasm-image-modal__clipboard-btn {
-    font-size: 14px;
-    padding: 8px 12px;
-    margin-top: 10px;
-    width: 100%;
-}
-
-.wasm-image-modal__right-col {
-    flex-shrink: 0;
-}
+/* ----- Rows: a name column of a fixed width, then the field ----- */
 
 .wasm-image-modal__setting-row {
     display: flex;
     align-items: center;
+    gap: 8px;
     margin-bottom: 10px;
-    gap: 60px;
 }
 
-.wasm-image-modal__setting-label {
-    font-size: 14px;
-    min-width: 80px;
-    flex-shrink: 0;
+.wasm-image-modal .wasm-image-modal__setting-label {
+    flex: 0 0 7em;
+    font-size: var(--wimg-font-ui-small);
     color: var(--wimg-text-muted);
 }
 
-.wasm-image-modal__setting-control {
-    flex: 1;
-    width: 100%;
-    height: 28px;
-    font-size: 14px;
-    box-sizing: border-box;
-}
-
-.wasm-image-modal__checkbox-container {
-    flex: 1;
-    width: 100%;
-    height: 28px;
-    display: flex;
-    align-items: center;
+.wasm-image-modal .wasm-image-modal__setting-control {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .wasm-image-modal__checkbox-label {
     cursor: pointer;
-    font-size: 14px;
-    min-width: 80px;
-    flex-shrink: 0;
-    color: var(--wimg-text-muted);
     user-select: none;
 }
 
-/* Name and folder fields */
+.wasm-image-modal__checkbox-container {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    min-width: 0;
+}
+
+/* The quality of a lossless format */
+.wasm-image-modal__setting-row--disabled {
+    opacity: 0.5;
+}
+
+/* Long values (the name template, the folder): the name above, the field
+   the whole width under it, at any width */
+.wasm-image-modal .wasm-image-modal__setting-row--stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.wasm-image-modal .wasm-image-modal__setting-row--stacked .wasm-image-modal__setting-label,
+.wasm-image-modal .wasm-image-modal__setting-row--stacked .wasm-image-modal__setting-control {
+    flex: none;
+}
+
+/* A narrow body: every row but a checkbox's folds the same way */
+@container wasm-image-converter (max-width: 320px) {
+    .wasm-image-modal .wasm-image-modal__setting-row:not(.wasm-image-modal__setting-row--checkbox) {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+    }
+
+    .wasm-image-modal .wasm-image-modal__setting-row:not(.wasm-image-modal__setting-row--checkbox) > * {
+        flex: none;
+    }
+}
+
+/* The expanded name under the name field */
 .wasm-image-save-fields__example {
     margin: -6px 0 10px;
-    font-size: 12px;
+    font-size: var(--wimg-font-ui-smaller);
     color: var(--wimg-text-muted);
     overflow-wrap: anywhere;
 }
 
-.wasm-image-modal__prediction-info {
-    font-size: 12px;
-    color: var(--wimg-accent-text);
-    margin-top: 5px;
-    display: none;
-}
-
-.wasm-image-modal__prediction-info--visible {
-    display: block;
-}
+/* ----- Footer: the convert button ----- */
 
 .wasm-image-modal__btn-row {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: flex-end;
-    align-items: center;
 }
 
-/* ----- Buttons (specificity 0,2,0 — override Obsidian globals) ----- */
-
-.wasm-image-modal button {
-    appearance: none;
-    -webkit-appearance: none;
-    border: 1px solid var(--wimg-border);
-    border-radius: var(--wimg-radius-s);
-    background: transparent;
-    color: var(--wimg-text-muted);
-    box-shadow: none;
-    cursor: pointer;
-    transition:
-        background-color 120ms ease,
-        border-color 120ms ease,
-        color 120ms ease;
+.wasm-image-modal .wasm-image-modal__convert {
+    width: 100%;
 }
 
-.wasm-image-modal button:hover {
-    background-color: var(--wimg-bg-hover);
-    border-color: var(--wimg-border);
-    color: var(--wimg-text);
-    box-shadow: none;
-}
-
-.wasm-image-modal button:focus-visible {
-    outline: 2px solid var(--wimg-accent);
-    outline-offset: 1px;
-}
-
-.wasm-image-modal .wasm-image-modal__btn {
-    font-size: 14px;
-    padding: 8px 12px;
-    color: var(--wimg-text);
-}
-
-.wasm-image-modal .wasm-image-modal__btn.mod-cta {
-    background-color: var(--wimg-accent);
-    color: var(--wimg-bg-primary);
-    border-color: var(--wimg-accent);
-}
-
-.wasm-image-modal .wasm-image-modal__btn.mod-cta:hover {
-    opacity: 0.9;
-}
-
-.wasm-image-modal .wasm-image-modal__btn.mod-cta:disabled {
+.wasm-image-modal .wasm-image-modal__convert:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-/* ----- Inputs & Selects (specificity 0,2,0) ----- */
-
-.wasm-image-modal select,
-.wasm-image-modal input[type="number"] {
-    border: 1px solid var(--wimg-border);
-    border-radius: var(--wimg-radius-s);
-    background: var(--wimg-bg-input);
-    color: var(--wimg-text);
-    box-sizing: border-box;
-}
-
-.wasm-image-modal select:focus,
-.wasm-image-modal input[type="number"]:focus {
-    border-color: var(--wimg-accent);
-    outline: none;
 }
 
 /* ----- SVG Icons ----- */
@@ -167,20 +115,24 @@
    ========================================================================== */
 
 .wasm-image-drop-zone {
-    border: 2px dashed var(--wimg-border);
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.3s ease;
-    min-height: var(--wimg-drop-zone-min-height);
-    max-height: var(--wimg-drop-zone-max-height);
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    min-height: var(--wimg-drop-zone-min-height);
+    max-height: var(--wimg-drop-zone-max-height);
     margin-top: 15px;
+    padding: 20px;
     overflow: hidden;
+    text-align: center;
+    border: 2px dashed var(--wimg-border);
+    border-radius: var(--wimg-radius-panel);
+    transition: border-color 0.3s ease;
+    cursor: pointer;
+}
+
+.wasm-image-drop-zone__buttons + .wasm-image-drop-zone {
+    margin-top: 8px;
 }
 
 .wasm-image-drop-zone:hover,
@@ -217,47 +169,52 @@
 }
 
 .wasm-image-drop-zone__subtext {
-    font-size: 12px;
+    font-size: var(--wimg-font-ui-smaller);
     color: var(--wimg-text-muted);
     margin-top: 5px;
 }
 
+/* Paste from Clipboard, Import from system: one row, or one each when
+   the two do not fit side by side */
 .wasm-image-drop-zone__buttons {
     display: flex;
-    gap: 10px;
-    margin-bottom: 5px;
-    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 15px;
 }
 
-.wasm-image-drop-zone__btn {
-    font-size: 13px;
-    padding: 8px 10px;
-    flex: 1;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    display: flex;
+.wasm-image-modal .wasm-image-drop-zone__btn {
+    flex: 1 1 auto;
     gap: 6px;
+    min-width: 0;
 }
 
 /* ==========================================================================
    Preview
    ========================================================================== */
 
-.wasm-image-preview {
-    margin-bottom: 15px;
-}
-
 .wasm-image-preview__img {
     max-width: 100%;
     max-height: var(--wimg-preview-max-height);
     object-fit: contain;
+    border-radius: var(--wimg-radius-m);
 }
 
+/* The file name and the size prediction under the zone */
 .wasm-image-preview__info {
-    font-size: 12px;
+    margin: 10px 0;
+    font-size: var(--wimg-font-ui-smaller);
     color: var(--wimg-text-muted);
-    margin-top: 5px;
+    text-align: center;
+}
+
+.wasm-image-preview__expected {
+    color: var(--wimg-accent-text);
+}
+
+/* The quick estimate, while the sampled one is computed */
+.wasm-image-preview__expected--loading {
+    color: var(--wimg-text-muted);
 }
 
 /* ==========================================================================
@@ -275,7 +232,7 @@
 .wasm-image-thumbnail__item {
     position: relative;
     aspect-ratio: 1;
-    border-radius: 6px;
+    border-radius: var(--wimg-radius-m);
     overflow: hidden;
     border: 1px solid var(--wimg-border);
 }
@@ -324,9 +281,15 @@
    Progress Bar
    ========================================================================== */
 
+/* Shown while several files are converted */
 .wasm-image-progress {
+    display: none;
     margin-top: 8px;
     margin-bottom: 8px;
+}
+
+.wasm-image-progress--visible {
+    display: block;
 }
 
 .wasm-image-progress__bar {
@@ -346,7 +309,7 @@
 }
 
 .wasm-image-progress__text {
-    font-size: 11px;
+    font-size: var(--wimg-font-ui-smaller);
     color: var(--wimg-text-muted);
     text-align: center;
     margin-top: 4px;

@@ -25,5 +25,9 @@ body {
     --wimg-bg-hover: var(--background-modifier-hover);
     --wimg-bg-input: var(--background-modifier-form-field);
     --wimg-radius-s: var(--radius-s);
+    --wimg-radius-m: var(--radius-m);
+    /* The radius of Obsidian's setting cards: 12px, 30px on a phone */
+    --wimg-radius-panel: var(--setting-items-radius);
     --wimg-font-ui-small: var(--font-ui-small);
+    --wimg-font-ui-smaller: var(--font-ui-smaller);
 }

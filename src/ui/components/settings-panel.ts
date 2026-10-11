@@ -122,9 +122,7 @@ export class SettingsPanel {
     private updateQualityState() {
         const isLossless = !encoderFor(this.encode.format).lossy;
         this.qualityInput.disabled = isLossless;
-        if (this.qualityRow) {
-            this.qualityRow.style.opacity = isLossless ? "0.5" : "1";
-        }
+        this.qualityRow?.toggleClass("wasm-image-modal__setting-row--disabled", isLossless);
     }
 
     private createSelect(label: string, onChange: (val: string) => void): HTMLSelectElement {
@@ -135,8 +133,9 @@ export class SettingsPanel {
         lbl.className = "wasm-image-modal__setting-label";
         lbl.textContent = label;
 
+        // "dropdown" gives Obsidian's look, with its chevron
         const select = document.createElement("select");
-        select.className = "wasm-image-modal__setting-control";
+        select.className = "dropdown wasm-image-modal__setting-control";
         select.addEventListener("change", () => onChange(select.value));
 
         row.appendChild(lbl);
@@ -178,10 +177,10 @@ export class SettingsPanel {
 
     private createCheckbox(label: string, initial: boolean, onChange: (checked: boolean) => void): HTMLInputElement {
         const row = document.createElement("div");
-        row.className = "wasm-image-modal__setting-row";
+        row.className = "wasm-image-modal__setting-row wasm-image-modal__setting-row--checkbox";
 
         const text = document.createElement("label");
-        text.className = "wasm-image-modal__checkbox-label";
+        text.className = "wasm-image-modal__setting-label wasm-image-modal__checkbox-label";
         text.textContent = label;
 
         const container = document.createElement("div");

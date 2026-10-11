@@ -48,7 +48,8 @@ export class SaveFields {
     }
 
     private createRow(label: string, value: string): HTMLInputElement {
-        const row = this.element.createDiv({ cls: "wasm-image-modal__setting-row" });
+        // Long values: the name above, the field the whole width under it
+        const row = this.element.createDiv({ cls: "wasm-image-modal__setting-row wasm-image-modal__setting-row--stacked" });
         row.createEl("label", { cls: "wasm-image-modal__setting-label", text: label });
         const input = row.createEl("input", { cls: "wasm-image-modal__setting-control", type: "text" });
         input.value = value;

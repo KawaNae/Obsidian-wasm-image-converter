@@ -112,7 +112,6 @@ export class ConverterBody {
 
         if (!this.initialFile) {
             const sourceBtnRow = bodyEl.createDiv({ cls: "wasm-image-drop-zone__buttons" });
-            sourceBtnRow.style.marginTop = "15px";
             if (canPasteByButton()) {
                 this.pasteBtn = this.createSourceButton(sourceBtnRow, "clipboard-paste", " Paste from Clipboard", () => this.dropZone.handleClipboardPaste());
             }
@@ -121,26 +120,19 @@ export class ConverterBody {
             this.dropZone.setDisabled(true);
         }
 
-        this.dropZone.getElement().style.marginTop = this.initialFile ? "15px" : "8px";
         bodyEl.appendChild(this.dropZone.getElement());
 
         // Info line (file name, size prediction)
         this.infoDiv = bodyEl.createDiv({ cls: "wasm-image-preview__info" });
-        this.infoDiv.style.margin = "10px 0";
-        this.infoDiv.style.textAlign = "center";
 
         // Progress bar (shown for several files)
         this.progressContainer = footerEl.createDiv({ cls: "wasm-image-progress" });
-        this.progressContainer.style.display = "none";
         const progressBar = this.progressContainer.createDiv({ cls: "wasm-image-progress__bar" });
         this.progressFill = progressBar.createDiv({ cls: "wasm-image-progress__fill" });
         this.progressText = this.progressContainer.createDiv({ cls: "wasm-image-progress__text" });
 
         const btnRow = footerEl.createDiv({ cls: "wasm-image-modal__btn-row" });
-        btnRow.style.justifyContent = "center";
-        this.convertBtn = btnRow.createEl("button", { cls: "wasm-image-modal__btn mod-cta" });
-        this.convertBtn.style.width = "100%";
-        this.convertBtn.style.justifyContent = "center";
+        this.convertBtn = btnRow.createEl("button", { cls: "wasm-image-modal__convert mod-cta" });
         this.convertBtn.addEventListener("click", () => this.runConversion());
         this.updateConvertButton();
 
@@ -169,8 +161,7 @@ export class ConverterBody {
     }
 
     private createSourceButton(row: HTMLElement, icon: string, text: string, onClick: () => void): HTMLButtonElement {
-        const btn = row.createEl("button", { cls: "wasm-image-modal__btn wasm-image-drop-zone__btn" });
-        btn.style.flex = "1";
+        const btn = row.createEl("button", { cls: "wasm-image-drop-zone__btn" });
         btn.onclick = onClick;
         setIcon(btn.createSpan({ cls: "wasm-image-modal__btn-icon" }), icon);
         btn.createSpan({ text });
@@ -393,7 +384,7 @@ export class ConverterBody {
             const delta = Math.round((prediction.predictedSize - file.size) / file.size * 100);
             const deltaText = delta <= 0 ? `-${-delta}%` : `+${delta}%`;
             const span = document.createElement('span');
-            span.style.color = loading ? 'var(--text-muted)' : 'var(--text-accent)';
+            span.className = loading ? 'wasm-image-preview__expected wasm-image-preview__expected--loading' : 'wasm-image-preview__expected';
             span.textContent = ` → Expected: ${predictedKB}kB (${deltaText})`;
             this.infoDiv.appendChild(span);
             if (loading) {
@@ -428,7 +419,7 @@ export class ConverterBody {
             } else {
                 this.setInputsDisabled(false);
                 this.updateConvertButton();
-                this.progressContainer.style.display = "none";
+                this.showProgress(false);
             }
         } finally {
             // dispose() left the decode alone while the conversion used it
@@ -475,7 +466,7 @@ export class ConverterBody {
         const total = this.selectedFiles.length;
 
         if (total > 1) {
-            this.progressContainer.style.display = "block";
+            this.showProgress(true);
         }
 
         for (let i = 0; i < this.selectedFiles.length; i++) {
@@ -539,8 +530,13 @@ export class ConverterBody {
             new Notice("❌ All conversions failed");
             this.setInputsDisabled(false);
             this.updateConvertButton();
-            this.progressContainer.style.display = "none";
+            this.showProgress(false);
         }
+    }
+
+    /** The progress bar of several files, in the footer above the button. */
+    private showProgress(shown: boolean) {
+        this.progressContainer.toggleClass("wasm-image-progress--visible", shown);
     }
 
     private async autoReadClipboard() {
