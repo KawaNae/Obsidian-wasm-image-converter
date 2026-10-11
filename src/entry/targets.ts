@@ -67,6 +67,22 @@ export function vaultRelativePath(filePath: string, basePath: string): string | 
   return file.slice(base.length + 1);
 }
 
+/**
+ * The files of a drop or a paste that are files of the vault, as `locate`
+ * tells them: a function giving the vault file a file is, or null for one
+ * from outside or without a path (an image copied to the clipboard). With
+ * no `locate` (mobile, an Electron without the files' paths), none is.
+ */
+export function vaultFilesOf<F, T>(files: readonly F[], locate: ((file: F) => T | null) | null): Map<F, T> {
+  const found = new Map<F, T>();
+  if (!locate) return found;
+  for (const file of files) {
+    const vaultFile = locate(file);
+    if (vaultFile) found.set(file, vaultFile);
+  }
+  return found;
+}
+
 /** "15.25KB → 3.03KB (80.1% compressed)", or "(+402.5% larger)" when the result is larger. */
 export function sizeChange(originalBytes: number, convertedBytes: number): string {
   const sizes = `${(originalBytes / 1024).toFixed(2)}KB → ${(convertedBytes / 1024).toFixed(2)}KB`;

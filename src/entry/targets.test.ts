@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   batchSummary, batchTargets, countByExtension, emptyTally, isAutoConvertTarget,
-  isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming, sizeChange, vaultRelativePath,
+  isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming, sizeChange, vaultFilesOf, vaultRelativePath,
 } from "./targets";
 
 const EXTS = ["jpg", "jpeg", "png", "gif", "bmp"];
@@ -136,6 +136,26 @@ describe("planIncoming with files of the vault", () => {
       { file: outPdf, action: "attach" },
       { file: outPng, action: "convert" },
     ]);
+  });
+});
+
+describe("vaultFilesOf", () => {
+  const inVault = { name: "in.png", path: "/vault/in.png" };
+  const outside = { name: "out.png", path: "/tmp/out.png" };
+  const clipboard = { name: "image.png", path: "" };
+  const locate = (f: { path: string }) => (f.path.startsWith("/vault/") ? `vault:${f.path.slice(7)}` : null);
+
+  it("maps the files of the vault to their vault files", () => {
+    const found = vaultFilesOf([inVault, outside, clipboard], locate);
+    expect([...found.entries()]).toEqual([[inVault, "vault:in.png"]]);
+  });
+
+  it("leaves an image of the clipboard, which has no path, outside", () => {
+    expect(vaultFilesOf([clipboard], locate).size).toBe(0);
+  });
+
+  it("finds none when the files cannot be told apart", () => {
+    expect(vaultFilesOf([inVault, outside], null).size).toBe(0);
   });
 });
 

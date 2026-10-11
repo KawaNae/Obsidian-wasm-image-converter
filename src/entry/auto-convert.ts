@@ -5,7 +5,7 @@ import { encoderFor } from "../conversion/encoders";
 import { embedLink, saveAsAttachment, saveNew } from "../save/save";
 import { isAnimatedGif } from "../utils/gif-check";
 import { dropPosition } from "./drop-position";
-import { IncomingAction, isGifFile, joinLinks, planIncoming, sizeChange } from "./targets";
+import { IncomingAction, isGifFile, joinLinks, planIncoming, sizeChange, vaultFilesOf } from "./targets";
 import { vaultFileLocator } from "./vault-file";
 
 /**
@@ -14,9 +14,11 @@ import { vaultFileLocator } from "./vault-file";
  * links at once, in the order of the files, separated by an empty line.
  * Other files of the same drop or paste (PDFs, non-target images) are saved
  * as they are, as Obsidian saves attachments, and linked in their place
- * among the others. Files of a desktop drop that are already in the vault
- * are linked where they are, neither copied nor converted, as Obsidian
- * links them; a drop of such files only is left to Obsidian.
+ * among the others. Files of a desktop drop or paste that are already in
+ * the vault (a file copied in Finder or Explorer) are linked where they
+ * are, neither copied nor converted, as Obsidian links them; a drop or a
+ * paste of such files only is left to Obsidian. An image copied to the
+ * clipboard has no path: it comes from outside.
  *
  * Drop and paste differ only in where the files come from and where the
  * links go. Animated GIFs are saved as they are unless the settings ask to
@@ -29,15 +31,7 @@ export class AutoConverter {
     plugin.registerEvent(this.app.workspace.on("editor-drop", (evt, editor, info) => {
       if (!this.wants(evt)) return;
       const files = Array.from(evt.dataTransfer?.files ?? []);
-      // Only a drop gives the files' paths (Electron, desktop)
-      const vaultFiles = new Map<File, TFile>();
-      const locate = vaultFileLocator(this.app);
-      if (locate) {
-        for (const file of files) {
-          const found = locate(file);
-          if (found) vaultFiles.set(file, found);
-        }
-      }
+      const vaultFiles = vaultFilesOf(files, vaultFileLocator(this.app));
       this.handle(evt, files, vaultFiles, editor, info, () => dropPosition(evt, editor));
     }));
 
@@ -47,7 +41,8 @@ export class AutoConverter {
         .filter(item => item.kind === "file")
         .map(item => item.getAsFile())
         .filter((file): file is File => file !== null);
-      this.handle(evt, files, new Map(), editor, info, () => {
+      const vaultFiles = vaultFilesOf(files, vaultFileLocator(this.app));
+      this.handle(evt, files, vaultFiles, editor, info, () => {
         // A paste replaces the selection, at once as Obsidian's own does
         if (editor.somethingSelected()) editor.replaceSelection("");
         return editor.getCursor();

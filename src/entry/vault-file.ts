@@ -21,10 +21,10 @@ function webUtils(): WebUtils | null {
 }
 
 /**
- * A function telling the vault file a dropped file is, or null when it is
- * none (a file from outside the vault, one without a path). Null itself
- * when the files of a drop cannot be told apart: on mobile, or where
- * Electron does not give their paths.
+ * A function telling the vault file a dropped or pasted file is, or null
+ * when it is none (a file from outside the vault, one without a path such
+ * as an image copied to the clipboard). Null itself when the files cannot
+ * be told apart: on mobile, or where Electron does not give their paths.
  */
 export function vaultFileLocator(app: App): ((file: File) => TFile | null) | null {
   const utils = webUtils();
