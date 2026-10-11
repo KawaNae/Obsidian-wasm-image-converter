@@ -25,6 +25,19 @@ export function pastedFiles(data: PastedData | null | undefined): File[] {
     return fromItems;
 }
 
+/** Whether the drop zone takes a file: an image of any type, as the file input's accept="image/*". */
+export function isImageFile(file: { type: string }): boolean {
+    return file.type.startsWith("image/");
+}
+
+/**
+ * The images a paste carries. Empty for a paste of text, or of files none
+ * of which is an image: the drop zone then tells there is no image.
+ */
+export function pastedImages(data: PastedData | null | undefined): File[] {
+    return pastedFiles(data).filter(isImageFile);
+}
+
 /** The device, as far as the placeholder's words differ. */
 export type HintPlatform = "android" | "ios" | "mac" | "desktop";
 

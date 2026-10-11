@@ -1,5 +1,8 @@
 import { Notice, Platform } from "obsidian";
-import { dropZoneHint, HintPlatform, pastedFiles } from "./drop-zone-input";
+import { dropZoneHint, HintPlatform, isImageFile, pastedImages } from "./drop-zone-input";
+
+/** The notice of a paste, or a read of the clipboard, that brings no image */
+const NO_IMAGE_IN_CLIPBOARD = "\u274c No image found in clipboard";
 
 function hintPlatform(): HintPlatform {
     if (Platform.isAndroidApp) return "android";
@@ -18,7 +21,8 @@ function hintPlatform(): HintPlatform {
  *
  * The zone itself takes the events the layer passes up (paste, beforeinput,
  * input, drop): it takes the pasted images like dropped ones and refuses
- * any edit, typing, deleting, the text of a paste. `inputmode="none"` keeps
+ * any edit, typing, deleting, the text of a paste. A paste without any
+ * image tells so, in the words of the "Paste from Clipboard" button. `inputmode="none"` keeps
  * the soft keyboard down when the layer is tapped.
  */
 export class DropZone {
@@ -107,7 +111,13 @@ export class DropZone {
             // Never let the browser insert what was pasted, text or images
             e.preventDefault();
             if (this.isDisabled) return;
-            this.addFiles(pastedFiles(e.clipboardData));
+            const images = pastedImages(e.clipboardData);
+            if (images.length === 0) {
+                // Text, or files none of which is an image: nothing to add
+                new Notice(NO_IMAGE_IN_CLIPBOARD);
+                return;
+            }
+            this.addFiles(images);
         });
 
         // Refuse every edit: typing, Enter, deleting, cutting, dragging inside
@@ -120,7 +130,7 @@ export class DropZone {
 
     private addFiles(newFiles: File[]) {
         // Filter to only image files
-        const imageFiles = newFiles.filter(f => f.type.startsWith("image/"));
+        const imageFiles = newFiles.filter(isImageFile);
         if (imageFiles.length === 0) return;
 
         // Add to existing selection
@@ -229,7 +239,7 @@ export class DropZone {
                     }
                 }
             }
-            new Notice("\u274c No image found in clipboard");
+            new Notice(NO_IMAGE_IN_CLIPBOARD);
         } catch (err) {
             console.log("Clipboard read failed:", err);
             new Notice("\u274c Failed to read clipboard. Try using drag & drop instead.");
