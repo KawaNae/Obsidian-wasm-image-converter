@@ -1,7 +1,7 @@
 {
   "id": "obsidian-wasm-image",
   "name": "WASM Image Converter",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "minAppVersion": "1.5.7",
   "description": "Fast image to WebP conversion using WebAssembly. Supports drag & drop, clipboard, and customizable settings.",
   "author": "KawaNae",
