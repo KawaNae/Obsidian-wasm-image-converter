@@ -4,7 +4,8 @@ import { convertBlob } from "../conversion/convert";
 import { encoderFor } from "../conversion/encoders";
 import { replaceExisting } from "../save/save";
 import { isAnimatedGif } from "../utils/gif-check";
-import { OverlayShell } from "../ui/overlay/overlay-shell";
+import { OverlayShell, raiseOverlay } from "../ui/overlay/overlay-shell";
+import { workspaceDocument } from "../ui/overlay/host-document";
 import { batchSummary, batchTargets, countByExtension, emptyTally, isLargerAfterConversion } from "./targets";
 
 /**
@@ -105,17 +106,26 @@ class ProgressNotice {
   }
 }
 
+/** The key of the confirmation among the open overlays: one at a time. */
+const BATCH_DIALOG = "batch-dialog";
+
 /**
  * Confirms a batch convert and chooses its preset, in the same window as
- * the converter dialog (a bottom sheet on a phone). Resolves with the
- * preset, or null when the dialog was closed otherwise.
+ * the converter dialog (a bottom sheet on a phone). It opens in the window
+ * of the workspace the user works in (the main window when that is the
+ * settings window), and once: while it is open, another call brings it to
+ * the front and resolves with null. Resolves with the preset, or null when
+ * the dialog was closed otherwise.
  */
 function chooseBatchPreset(app: App, settings: PluginSettings, scopeLabel: string, targets: TFile[]): Promise<Preset | null> {
+  if (raiseOverlay(BATCH_DIALOG)) return Promise.resolve(null);
   return new Promise(resolve => {
     const shell = new OverlayShell();
     let chosen: Preset | null = null;
     shell.open({
       label: "Batch Convert Images",
+      hostDocument: workspaceDocument(app, null),
+      key: BATCH_DIALOG,
       panelClass: "wasm-image-batch-dialog",
       keymap: app.keymap,
       onClose: () => resolve(chosen),

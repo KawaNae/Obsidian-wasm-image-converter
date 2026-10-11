@@ -1,6 +1,6 @@
 import { Keymap, setIcon } from "obsidian";
 import { inLayerAbove } from "./layer-order";
-import { registerOverlay, unregisterOverlay } from "./overlay-registry";
+import { overlayFor, registerOverlay, unregisterOverlay } from "./overlay-registry";
 import { HotkeyShield } from "./hotkey-shield";
 import { holdHistoryBack } from "./history-back";
 import { KeyboardAwareContainer } from "./keyboard-aware-container";
@@ -16,6 +16,16 @@ export interface OverlayOpenOptions {
      * title is shown: the dialog's own fields say what it is for.
      */
     label: string;
+    /**
+     * The window's document the overlay opens in (host-document.ts picks
+     * it): the window of the note or of the workspace the dialog is for.
+     */
+    hostDocument: Document;
+    /**
+     * Makes the overlay the one open overlay of this key: while it is open,
+     * raiseOverlay(key) brings it to the front in place of a second one.
+     */
+    key?: string;
     /** Added to the panel: the dialog's own styles hang from it */
     panelClass?: string;
     /**
@@ -90,8 +100,8 @@ export class OverlayShell {
         this.onCloseCb = opts.onClose ?? null;
         this.closing = false;
 
-        // The window the user works in (a popout's own document)
-        const hostDoc = activeDocument ?? document;
+        // The window the dialog is for (a popout's own document)
+        const hostDoc = opts.hostDocument;
         const hostWin = hostDoc.defaultView ?? window;
         this.hostDoc = hostDoc;
         this.hostWin = hostWin;
@@ -155,6 +165,9 @@ export class OverlayShell {
 
         this.hotkeys = new HotkeyShield(opts.keymap, hostDoc, (node) => this.holds(node));
 
+        // The dialog's window comes to the front when another one had the focus
+        focusWindow(hostWin, hostDoc);
+
         // The first focus, a frame later: one put during the open animation can be lost
         const initialFocus = opts.initialFocus;
         hostWin.requestAnimationFrame(() => {
@@ -166,7 +179,17 @@ export class OverlayShell {
         this.pageHideHandler = () => this.close();
         hostWin.addEventListener("pagehide", this.pageHideHandler);
 
-        registerOverlay(this);
+        registerOverlay(this, opts.key);
+    }
+
+    /**
+     * Brings the overlay to the front: its window (focusWindow), and the
+     * focus to the panel unless it is already in the overlay.
+     */
+    raise(): void {
+        if (!this.isOpen() || !this.hostDoc || !this.hostWin || !this.panelEl) return;
+        focusWindow(this.hostWin, this.hostDoc);
+        if (!this.holds(this.hostDoc.activeElement)) this.panelEl.focus({ preventScroll: true });
     }
 
     /** Whether the overlay is open and not closing. */
@@ -354,6 +377,39 @@ export class OverlayShell {
         body.addEventListener("touchend", onTouchEnd);
         body.addEventListener("touchcancel", onTouchEnd);
     }
+}
+
+/**
+ * Brings the open overlay of `key` to the front (OverlayShell.raise) and
+ * tells whether there was one: a dialog that must not open twice calls it
+ * before opening.
+ */
+export function raiseOverlay(key: string): boolean {
+    const overlay = overlayFor(key);
+    if (!(overlay instanceof OverlayShell) || !overlay.isOpen()) return false;
+    overlay.raise();
+    return true;
+}
+
+/** The Electron window Obsidian keeps on each of its windows (desktop only). */
+interface ElectronWindow {
+    focus(): void;
+    isMinimized(): boolean;
+    restore(): void;
+}
+
+/**
+ * Brings `win` to the front unless its document has the focus, as
+ * Obsidian brings a window of its workspace or its settings window to the
+ * front: by the Electron window it keeps on the window. Without one (on
+ * mobile) there is one window, and nothing to do.
+ */
+function focusWindow(win: Window, doc: Document): void {
+    if (doc.hasFocus()) return;
+    const electronWindow = (win as Window & { electronWindow?: ElectronWindow }).electronWindow;
+    if (!electronWindow) return;
+    if (electronWindow.isMinimized()) electronWindow.restore();
+    electronWindow.focus();
 }
 
 /** Whether a touch began in a field: an input, a textarea, a select, or an editable element. */

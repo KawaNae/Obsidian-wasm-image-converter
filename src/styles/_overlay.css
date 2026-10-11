@@ -67,6 +67,11 @@
     padding: 0 24px;
 }
 
+/* The top of the body is the panel's padding alone: a paragraph's margin would add to it */
+.wasm-image-overlay__body > :first-child {
+    margin-top: 0;
+}
+
 /* The buttons, outside the body's scroll: always at the bottom of the panel */
 .wasm-image-overlay__footer {
     flex-shrink: 0;

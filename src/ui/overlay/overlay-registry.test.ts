@@ -4,6 +4,7 @@ import {
     unregisterOverlay,
     closeAllOverlays,
     openOverlayCount,
+    overlayFor,
     type ClosableOverlay,
 } from './overlay-registry';
 
@@ -86,5 +87,26 @@ describe('OverlayRegistry', () => {
         closeAllOverlays();
 
         expect(closed).toEqual(['a']);
+    });
+
+    it('finds an overlay by its key until it unregisters', () => {
+        const closed: string[] = [];
+        const dialog = fakeOverlay(closed, 'dialog');
+        registerOverlay(dialog, 'converter');
+        registerOverlay(fakeOverlay(closed, 'other'));
+
+        expect(overlayFor('converter')).toBe(dialog);
+        expect(overlayFor('batch')).toBeUndefined();
+
+        unregisterOverlay(dialog);
+        expect(overlayFor('converter')).toBeUndefined();
+    });
+
+    it('forgets the keys when it closes every overlay', () => {
+        registerOverlay(fakeOverlay([], 'dialog'), 'converter');
+
+        closeAllOverlays();
+
+        expect(overlayFor('converter')).toBeUndefined();
     });
 });

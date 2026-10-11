@@ -7,6 +7,9 @@
  * onunload one place to close them all. A plugin reload evaluates the
  * module anew, so an old instance only ever sees its own overlays.
  * Ported from obsidian-task-viewer's OverlayRegistry.
+ *
+ * An overlay registered with a key is the one open overlay of that key: a
+ * dialog that must not open twice looks itself up before opening.
  */
 
 export interface ClosableOverlay {
@@ -14,13 +17,24 @@ export interface ClosableOverlay {
 }
 
 const openOverlays = new Set<ClosableOverlay>();
+const keyedOverlays = new Map<string, ClosableOverlay>();
 
-export function registerOverlay(overlay: ClosableOverlay): void {
+/** Adds `overlay`; with `key`, it becomes the open overlay of that key. */
+export function registerOverlay(overlay: ClosableOverlay, key?: string): void {
     openOverlays.add(overlay);
+    if (key !== undefined) keyedOverlays.set(key, overlay);
 }
 
 export function unregisterOverlay(overlay: ClosableOverlay): void {
     openOverlays.delete(overlay);
+    for (const [key, keyed] of keyedOverlays) {
+        if (keyed === overlay) keyedOverlays.delete(key);
+    }
+}
+
+/** The open overlay registered with `key`, if any. */
+export function overlayFor(key: string): ClosableOverlay | undefined {
+    return keyedOverlays.get(key);
 }
 
 /**
@@ -31,6 +45,7 @@ export function unregisterOverlay(overlay: ClosableOverlay): void {
 export function closeAllOverlays(): void {
     const overlays = [...openOverlays];
     openOverlays.clear();
+    keyedOverlays.clear();
     for (const overlay of overlays) {
         try {
             overlay.close();

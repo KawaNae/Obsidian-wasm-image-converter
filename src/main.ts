@@ -9,6 +9,7 @@ import { AutoConverter } from "./entry/auto-convert";
 import { runBatchConvert } from "./entry/batch-convert";
 import { closeAllOverlays } from "./ui/overlay/overlay-registry";
 import { untrackAllKeyboards } from "./ui/overlay/keyboard-state";
+import { workspaceDocument } from "./ui/overlay/host-document";
 
 /** Extensions the file menu offers to convert. */
 const FILE_MENU_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp"];
@@ -79,15 +80,21 @@ export default class WasmImageConverterPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  /** The dialog for new images; the links go to the cursor of the active note. */
+  /**
+   * The dialog for new images, in the window of the active note (the main
+   * window when there is none); the links go to that note's cursor.
+   */
   private async openConverterForActiveNote() {
     try {
       const active = this.app.workspace.getActiveFile();
-      const link = await openConverterDialog(this.app, this.settings, { sourcePath: active?.path ?? "" });
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      const hostDocument = workspaceDocument(this.app, view?.containerEl.ownerDocument ?? null);
+      const link = await openConverterDialog(this.app, this.settings, { sourcePath: active?.path ?? "" }, hostDocument);
       if (!link) return;
 
       if (active) {
-        const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+        // The note the dialog opened for, while its view still shows it
+        const editor = view?.file === active ? view.editor : undefined;
         if (editor) {
           const offset = editor.posToOffset(editor.getCursor());
           editor.replaceRange(link, editor.offsetToPos(offset));
@@ -119,7 +126,7 @@ export default class WasmImageConverterPlugin extends Plugin {
           const extension = file.extension.toLowerCase();
           const imageFile = new File([data], file.name, { type: `image/${extension === "jpg" ? "jpeg" : extension}` });
           const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
-          const link = await openConverterDialog(this.app, this.settings, { sourcePath, initialFile: imageFile, target: file });
+          const link = await openConverterDialog(this.app, this.settings, { sourcePath, initialFile: imageFile, target: file }, workspaceDocument(this.app, null));
           if (link) {
             // There may be no editor to insert into; offer the link instead
             await navigator.clipboard.writeText(link);
