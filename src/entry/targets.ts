@@ -67,6 +67,16 @@ export function vaultRelativePath(filePath: string, basePath: string): string | 
   return file.slice(base.length + 1);
 }
 
+/** "15.25KB → 3.03KB (80.1% compressed)", or "(+402.5% larger)" when the result is larger. */
+export function sizeChange(originalBytes: number, convertedBytes: number): string {
+  const sizes = `${(originalBytes / 1024).toFixed(2)}KB → ${(convertedBytes / 1024).toFixed(2)}KB`;
+  if (originalBytes <= 0) return sizes;
+  const percent = Math.abs(originalBytes - convertedBytes) / originalBytes * 100;
+  return convertedBytes > originalBytes
+    ? `${sizes} (+${percent.toFixed(1)}% larger)`
+    : `${sizes} (${percent.toFixed(1)}% compressed)`;
+}
+
 /** Whether an incoming file may be an (animated) GIF. */
 export function isGifFile(file: IncomingFile): boolean {
   return file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif");

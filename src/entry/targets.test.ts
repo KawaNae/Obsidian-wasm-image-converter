@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   batchSummary, batchTargets, countByExtension, emptyTally, isAutoConvertTarget,
-  isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming, vaultRelativePath,
+  isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming, sizeChange, vaultRelativePath,
 } from "./targets";
 
 const EXTS = ["jpg", "jpeg", "png", "gif", "bmp"];
@@ -156,5 +156,20 @@ describe("vaultRelativePath", () => {
   it("reads Windows paths, ignoring the case of the vault's folder but not of the rest", () => {
     expect(vaultRelativePath("C:\\Obsidian\\Dev\\Notes\\A.png", "C:\\Obsidian\\Dev")).toBe("Notes/A.png");
     expect(vaultRelativePath("c:\\obsidian\\dev\\Notes\\A.png", "C:\\Obsidian\\Dev")).toBe("Notes/A.png");
+  });
+});
+
+describe("sizeChange", () => {
+  it("tells the compression of a smaller result", () => {
+    expect(sizeChange(10240, 2048)).toBe("10.00KB → 2.00KB (80.0% compressed)");
+    expect(sizeChange(1024, 1024)).toBe("1.00KB → 1.00KB (0.0% compressed)");
+  });
+
+  it("tells how much larger a larger result is", () => {
+    expect(sizeChange(3103, 15593)).toBe("3.03KB → 15.23KB (+402.5% larger)");
+  });
+
+  it("gives the sizes only without an original size", () => {
+    expect(sizeChange(0, 100)).toBe("0.00KB → 0.10KB");
   });
 });

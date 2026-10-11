@@ -5,7 +5,7 @@ import { encoderFor } from "../conversion/encoders";
 import { embedLink, saveAsAttachment, saveNew } from "../save/save";
 import { isAnimatedGif } from "../utils/gif-check";
 import { dropPosition } from "./drop-position";
-import { IncomingAction, isGifFile, joinLinks, planIncoming } from "./targets";
+import { IncomingAction, isGifFile, joinLinks, planIncoming, sizeChange } from "./targets";
 import { vaultFileLocator } from "./vault-file";
 
 /**
@@ -150,10 +150,8 @@ export class AutoConverter {
     }
 
     if (convertedNames.length > 0) {
-      const sizes = `${(originalBytes / 1024).toFixed(2)}KB → ${(convertedBytes / 1024).toFixed(2)}KB`;
-      const ratio = ((originalBytes - convertedBytes) / originalBytes * 100).toFixed(1);
       const what = convertedNames.length === 1 ? convertedNames[0] : `${convertedNames.length} images`;
-      new Notice(`✅ Auto-converted (${preset.name}): ${what} ${sizes} (${ratio}% compressed)`);
+      new Notice(`✅ Auto-converted (${preset.name}): ${what} ${sizeChange(originalBytes, convertedBytes)}`);
     }
     if (keptGifs.length > 0) {
       new Notice(`⚠️ Kept animated GIF as is: ${keptGifs.join(", ")}`);

@@ -11,7 +11,7 @@ import { DropZone } from "./components/drop-zone";
 import { SettingsPanel } from "./components/settings-panel";
 import { SaveFields } from "./components/save-fields";
 import { canonicalFolder, displayFolder, planNewFile, planReplacement } from "./save-plan";
-import { joinLinks } from "../entry/targets";
+import { joinLinks, sizeChange } from "../entry/targets";
 
 /** What the dialog converts, and for which note. */
 export interface ConverterRequest {
@@ -438,10 +438,7 @@ export class ConverterBody {
             : undefined;
         const result = await replaceExisting(this.app, target, blob, encoderFor(encode.format).extension, destination);
 
-        const originalKB = (result.originalSize / 1024).toFixed(2);
-        const convertedKB = (result.convertedSize / 1024).toFixed(2);
-        const ratio = (((result.originalSize - result.convertedSize) / result.originalSize) * 100).toFixed(1);
-        new Notice(`✅ Image replaced: ${result.file.path}\n${originalKB}KB → ${convertedKB}KB (${ratio}% compressed)`);
+        new Notice(`✅ Image replaced: ${result.file.path}\n${sizeChange(result.originalSize, result.convertedSize)}`);
 
         this.converting = false;
         this.result = embedLink(this.app, result.file, this.sourcePath);
@@ -513,16 +510,11 @@ export class ConverterBody {
         }
 
         if (links.length > 0) {
-            const originalKB = (totalOriginalSize / 1024).toFixed(2);
-            const convertedKB = (totalConvertedSize / 1024).toFixed(2);
-            const ratio = totalOriginalSize > 0
-                ? (((totalOriginalSize - totalConvertedSize) / totalOriginalSize) * 100).toFixed(1)
-                : "0";
-
+            const sizes = sizeChange(totalOriginalSize, totalConvertedSize);
             if (total === 1) {
-                new Notice(`✅ Image converted: ${originalKB}KB → ${convertedKB}KB (${ratio}% compressed)`);
+                new Notice(`✅ Image converted: ${sizes}`);
             } else {
-                new Notice(`✅ ${links.length} images converted: ${originalKB}KB → ${convertedKB}KB (${ratio}% compressed)`);
+                new Notice(`✅ ${links.length} images converted: ${sizes}`);
             }
             if (errors.length > 0) {
                 new Notice(`❌ Failed to convert: ${errors.join(", ")}`);
