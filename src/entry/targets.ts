@@ -106,6 +106,27 @@ export function joinLinks(links: readonly string[]): string {
   return links.join("\n\n");
 }
 
+/**
+ * The step at which auto-convert failed for a file: reading or encoding
+ * the image ("convert", decoding failures included), writing the file
+ * ("save"), or making the link to a file of the vault ("link").
+ */
+export type FailedStep = "convert" | "save" | "link";
+
+/**
+ * The notice of the files auto-convert failed for, one line per step in
+ * the order of the steps: "❌ Failed to convert a.png, b.png". Null when
+ * none failed.
+ */
+export function failureNotice(failed: readonly { name: string; step: FailedStep }[]): string | null {
+  const steps: FailedStep[] = ["convert", "save", "link"];
+  const lines = steps
+    .map(step => ({ step, names: failed.filter(f => f.step === step).map(f => f.name) }))
+    .filter(({ names }) => names.length > 0)
+    .map(({ step, names }) => `❌ Failed to ${step} ${names.join(", ")}`);
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 /** Whether `path` lies in `folder` or its subfolders; "" and "/" are the whole vault. */
 export function isInFolder(path: string, folder: string): boolean {
   const prefix = folder.replace(/^\/+|\/+$/g, "");

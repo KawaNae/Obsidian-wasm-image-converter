@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  batchSummary, batchTargets, countByExtension, emptyTally, isAutoConvertTarget,
+  batchSummary, batchTargets, countByExtension, emptyTally, failureNotice, isAutoConvertTarget,
   isGifFile, isInFolder, isLargerAfterConversion, joinLinks, planIncoming, sizeChange, vaultFilesOf, vaultRelativePath,
 } from "./targets";
 
@@ -191,5 +191,24 @@ describe("sizeChange", () => {
 
   it("gives the sizes only without an original size", () => {
     expect(sizeChange(0, 100)).toBe("0.00KB → 0.10KB");
+  });
+});
+
+describe("failureNotice", () => {
+  it("says nothing when no file failed", () => {
+    expect(failureNotice([])).toBeNull();
+  });
+
+  it("names the step that failed, a decode as a conversion", () => {
+    expect(failureNotice([{ name: "broken.png", step: "convert" }])).toBe("❌ Failed to convert broken.png");
+  });
+
+  it("gives one line per step, in the order of the steps", () => {
+    const got = failureNotice([
+      { name: "c.pdf", step: "save" },
+      { name: "a.png", step: "convert" },
+      { name: "b.jpg", step: "convert" },
+    ]);
+    expect(got).toBe("❌ Failed to convert a.png, b.jpg\n❌ Failed to save c.pdf");
   });
 });

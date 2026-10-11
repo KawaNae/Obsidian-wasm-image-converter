@@ -5,7 +5,7 @@ import { encoderFor } from "../conversion/encoders";
 import { embedLink, saveAsAttachment, saveNew } from "../save/save";
 import { isAnimatedGif } from "../utils/gif-check";
 import { dropPosition } from "./drop-position";
-import { IncomingAction, isGifFile, joinLinks, planIncoming, sizeChange, vaultFilesOf } from "./targets";
+import { FailedStep, failureNotice, IncomingAction, isGifFile, joinLinks, planIncoming, sizeChange, vaultFilesOf } from "./targets";
 import { vaultFileLocator } from "./vault-file";
 
 /**
@@ -103,11 +103,13 @@ export class AutoConverter {
     const links: string[] = [];
     const convertedNames: string[] = [];
     const keptGifs: string[] = [];
-    const failed: string[] = [];
+    const failed: { name: string; step: FailedStep }[] = [];
     let originalBytes = 0;
     let convertedBytes = 0;
 
     for (const { file, action } of plan) {
+      // The step under way, for the message when it fails
+      let step: FailedStep = action === "link" ? "link" : action === "attach" ? "save" : "convert";
       try {
         if (action === "link") {
           links.push(embedLink(this.app, vaultFiles.get(file)!, sourcePath));
@@ -120,18 +122,20 @@ export class AutoConverter {
         }
         if (isGifFile(file) && !settings.processAnimatedGifs && await isAnimatedGif(file)) {
           const gifExtension = file.name.match(/\.([^.]+)$/)?.[1] ?? "gif";
+          step = "save";
           links.push(await this.save(file, file, gifExtension, sourcePath));
           keptGifs.push(file.name);
           continue;
         }
         const converted = await convertBlob(file, preset.encode);
+        step = "save";
         links.push(await this.save(file, converted, extension, sourcePath));
         convertedNames.push(file.name);
         originalBytes += file.size;
         convertedBytes += converted.size;
       } catch (error) {
-        console.error(`Auto-convert: failed to save ${file.name}:`, error);
-        failed.push(file.name);
+        console.error(`Auto-convert: failed to ${step} ${file.name}:`, error);
+        failed.push({ name: file.name, step });
       }
     }
 
@@ -151,9 +155,8 @@ export class AutoConverter {
     if (keptGifs.length > 0) {
       new Notice(`⚠️ Kept animated GIF as is: ${keptGifs.join(", ")}`);
     }
-    if (failed.length > 0) {
-      new Notice(`❌ Failed to save ${failed.join(", ")}`);
-    }
+    const failure = failureNotice(failed);
+    if (failure) new Notice(failure);
   }
 
   /** Saves `blob` as a new file for the note and returns its embed link. */
