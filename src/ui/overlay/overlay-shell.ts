@@ -1,6 +1,6 @@
 import { Keymap, setIcon } from "obsidian";
 import { inLayerAbove } from "./layer-order";
-import { overlayFor, registerOverlay, unregisterOverlay } from "./overlay-registry";
+import { keyedOpening, overlayFor, registerOverlay, unregisterOverlay } from "./overlay-registry";
 import { HotkeyShield } from "./hotkey-shield";
 import { holdHistoryBack } from "./history-back";
 import { KeyboardAwareContainer } from "./keyboard-aware-container";
@@ -22,8 +22,8 @@ export interface OverlayOpenOptions {
      */
     hostDocument: Document;
     /**
-     * Makes the overlay the one open overlay of this key: while it is open,
-     * raiseOverlay(key) brings it to the front in place of a second one.
+     * Makes the overlay the one open overlay of this key: a dialog that must
+     * not open twice asks keepOverlay(key, hostDocument) before opening.
      */
     key?: string;
     /** Added to the panel: the dialog's own styles hang from it */
@@ -165,9 +165,6 @@ export class OverlayShell {
 
         this.hotkeys = new HotkeyShield(opts.keymap, hostDoc, (node) => this.holds(node));
 
-        // The dialog's window comes to the front when another one had the focus
-        focusWindow(hostWin, hostDoc);
-
         // The first focus, a frame later: one put during the open animation can be lost
         const initialFocus = opts.initialFocus;
         hostWin.requestAnimationFrame(() => {
@@ -182,14 +179,15 @@ export class OverlayShell {
         registerOverlay(this, opts.key);
     }
 
-    /**
-     * Brings the overlay to the front: its window (focusWindow), and the
-     * focus to the panel unless it is already in the overlay.
-     */
-    raise(): void {
-        if (!this.isOpen() || !this.hostDoc || !this.hostWin || !this.panelEl) return;
-        focusWindow(this.hostWin, this.hostDoc);
+    /** The focus to the panel, unless it is already in the overlay. */
+    takeFocus(): void {
+        if (!this.isOpen() || !this.hostDoc || !this.panelEl) return;
         if (!this.holds(this.hostDoc.activeElement)) this.panelEl.focus({ preventScroll: true });
+    }
+
+    /** The window's document the overlay is open in, or null when it is not open. */
+    openDocument(): Document | null {
+        return this.isOpen() ? this.hostDoc : null;
     }
 
     /** Whether the overlay is open and not closing. */
@@ -380,36 +378,30 @@ export class OverlayShell {
 }
 
 /**
- * Brings the open overlay of `key` to the front (OverlayShell.raise) and
- * tells whether there was one: a dialog that must not open twice calls it
- * before opening.
+ * Whether the open overlay of `key` stays in place of a new one in
+ * `hostDocument` (keyedOpening): a dialog that must not open twice calls it
+ * before opening, and opens only on false.
+ *
+ * - In the same window, the open overlay stays and takes the focus unless
+ *   it has it: true
+ * - In another window, it closes, dropping what was put in it, so the new
+ *   one opens in this window: false. Its close is done before this returns:
+ *   it is out of the registry and has let go of the back
+ * - None open: false
  */
-export function raiseOverlay(key: string): boolean {
+export function keepOverlay(key: string, hostDocument: Document): boolean {
     const overlay = overlayFor(key);
-    if (!(overlay instanceof OverlayShell) || !overlay.isOpen()) return false;
-    overlay.raise();
-    return true;
-}
-
-/** The Electron window Obsidian keeps on each of its windows (desktop only). */
-interface ElectronWindow {
-    focus(): void;
-    isMinimized(): boolean;
-    restore(): void;
-}
-
-/**
- * Brings `win` to the front unless its document has the focus, as
- * Obsidian brings a window of its workspace or its settings window to the
- * front: by the Electron window it keeps on the window. Without one (on
- * mobile) there is one window, and nothing to do.
- */
-function focusWindow(win: Window, doc: Document): void {
-    if (doc.hasFocus()) return;
-    const electronWindow = (win as Window & { electronWindow?: ElectronWindow }).electronWindow;
-    if (!electronWindow) return;
-    if (electronWindow.isMinimized()) electronWindow.restore();
-    electronWindow.focus();
+    const open = overlay instanceof OverlayShell ? overlay : null;
+    switch (keyedOpening(open?.openDocument() ?? null, hostDocument)) {
+        case "keep":
+            open?.takeFocus();
+            return true;
+        case "reopen":
+            open?.close();
+            return false;
+        case "open":
+            return false;
+    }
 }
 
 /** Whether a touch began in a field: an input, a textarea, a select, or an editable element. */

@@ -9,7 +9,8 @@
  * Ported from obsidian-task-viewer's OverlayRegistry.
  *
  * An overlay registered with a key is the one open overlay of that key: a
- * dialog that must not open twice looks itself up before opening.
+ * dialog that must not open twice looks itself up before opening
+ * (keyedOpening).
  */
 
 export interface ClosableOverlay {
@@ -35,6 +36,20 @@ export function unregisterOverlay(overlay: ClosableOverlay): void {
 /** The open overlay registered with `key`, if any. */
 export function overlayFor(key: string): ClosableOverlay | undefined {
     return keyedOverlays.get(key);
+}
+
+/**
+ * What opening the overlay of a key in window `wanted` does, given the
+ * window the open overlay of that key is in (null when none is open):
+ *
+ * - "open": none is open, so it opens
+ * - "keep": the open one is in that window and stays, in place of a second
+ * - "reopen": the open one is in another window; it closes, dropping what
+ *   was put in it, and the overlay opens anew in `wanted`
+ */
+export function keyedOpening<W>(openIn: W | null, wanted: W): "open" | "keep" | "reopen" {
+    if (openIn === null) return "open";
+    return openIn === wanted ? "keep" : "reopen";
 }
 
 /**

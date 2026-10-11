@@ -5,6 +5,7 @@ import {
     closeAllOverlays,
     openOverlayCount,
     overlayFor,
+    keyedOpening,
     type ClosableOverlay,
 } from './overlay-registry';
 
@@ -108,5 +109,20 @@ describe('OverlayRegistry', () => {
         closeAllOverlays();
 
         expect(overlayFor('converter')).toBeUndefined();
+    });
+});
+
+describe('keyedOpening', () => {
+    it('opens when none of the key is open', () => {
+        expect(keyedOpening(null, 'main')).toBe('open');
+    });
+
+    it('keeps the open one in the same window', () => {
+        expect(keyedOpening('main', 'main')).toBe('keep');
+    });
+
+    it('reopens in the wanted window when the open one is in another', () => {
+        expect(keyedOpening('main', 'popout')).toBe('reopen');
+        expect(keyedOpening('popout', 'main')).toBe('reopen');
     });
 });
