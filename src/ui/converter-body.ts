@@ -149,6 +149,11 @@ export class ConverterBody {
     /** The host closed: stop or deliver, and release what the body holds. */
     dispose() {
         this.closedFlag = true;
+        // Predictions that have not finished yet are of no use any more, and
+        // the decode they would draw is about to be closed: stop them here.
+        // Not in releaseDecodeSource, which loadDecodeSource calls from
+        // within the prediction it decodes for.
+        this.predictionGeneration++;
         this.dropZone?.dispose();
         if (this.converting) {
             // The conversion notices this, stops after the current file,
@@ -273,6 +278,8 @@ export class ConverterBody {
     }
 
     private async updatePrediction() {
+        // A change after closing would decode anew with nobody to release it
+        if (this.closedFlag) return;
         const generation = ++this.predictionGeneration;
         this.updateExample();
 
@@ -422,7 +429,8 @@ export class ConverterBody {
                 this.showProgress(false);
             }
         } finally {
-            // dispose() left the decode alone while the conversion used it
+            // dispose() left the decode alone while the conversion used it;
+            // it already stopped the predictions that would draw it
             if (this.closedFlag) this.releaseDecodeSource();
         }
     }
