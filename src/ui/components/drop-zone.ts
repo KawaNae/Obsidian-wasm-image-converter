@@ -9,18 +9,25 @@ function hintPlatform(): HintPlatform {
 
 /**
  * Where the dialog takes images: dropped, picked with the file input, or
- * pasted. The zone is an editing host (contenteditable) so that it can
- * have the focus and receive a paste: Ctrl+V or Cmd+V on a desktop, the
- * "Paste" of a long press on Android, where no button can read the
- * clipboard. It takes the pasted images like dropped ones and refuses any
- * edit: typing, deleting, the text of a paste. `inputmode="none"` keeps
- * the soft keyboard down when it is tapped.
+ * pasted. An empty editing host (contenteditable), the input layer, covers
+ * the whole zone so that the zone can have the focus and receive a paste:
+ * Ctrl+V or Cmd+V on a desktop, the "Paste" of a long press on Android,
+ * where no button can read the clipboard. The placeholder and the preview
+ * lie under it, out of the editing host: a long press finds no word to
+ * select, so Android shows Paste alone and no selection handles.
+ *
+ * The zone itself takes the events the layer passes up (paste, beforeinput,
+ * input, drop): it takes the pasted images like dropped ones and refuses
+ * any edit, typing, deleting, the text of a paste. `inputmode="none"` keeps
+ * the soft keyboard down when the layer is tapped.
  */
 export class DropZone {
     element: HTMLDivElement;
     private onFilesSelected: (files: File[]) => void;
 
     private contentContainer: HTMLDivElement;
+    /** The empty editing host over the zone; it has the focus and takes the paste */
+    private inputLayer: HTMLDivElement;
     private currentObjectUrls: string[] = [];
     private fileInput: HTMLInputElement;
     private isDisabled: boolean = false;
@@ -37,12 +44,15 @@ export class DropZone {
         this.fileInput.type = "file";
         this.fileInput.accept = "image/*";
         this.fileInput.multiple = true;
-        this.fileInput.style.display = "none";
+        this.fileInput.hidden = true;
         this.element.appendChild(this.fileInput);
 
-        this.element.contentEditable = "true";
-        this.element.inputMode = "none";
-        this.element.spellcheck = false;
+        this.inputLayer = document.createElement("div");
+        this.inputLayer.className = "wasm-image-drop-zone__input";
+        this.inputLayer.contentEditable = "true";
+        this.inputLayer.inputMode = "none";
+        this.inputLayer.spellcheck = false;
+        this.inputLayer.setAttribute("aria-label", "Paste images here");
 
         this.render();
     }
@@ -51,12 +61,13 @@ export class DropZone {
         this.isDisabled = disabled;
         this.element.classList.toggle("wasm-image-drop-zone--disabled", disabled);
         this.fileInput.disabled = disabled;
-        this.element.contentEditable = disabled ? "false" : "true";
+        this.inputLayer.contentEditable = disabled ? "false" : "true";
     }
 
     private render() {
         this.element.className = "wasm-image-drop-zone";
         this.element.appendChild(this.contentContainer);
+        this.element.appendChild(this.inputLayer);
 
         this.renderContent();
 
@@ -103,13 +114,8 @@ export class DropZone {
         this.element.addEventListener("beforeinput", (e) => e.preventDefault());
 
         // An IME's composition cannot be cancelled in beforeinput; undo
-        // whatever reached the zone by drawing it again.
-        this.element.addEventListener("input", () => {
-            for (const node of Array.from(this.element.childNodes)) {
-                if (node !== this.fileInput && node !== this.contentContainer) node.remove();
-            }
-            this.renderContent();
-        });
+        // whatever reached the layer by emptying it.
+        this.element.addEventListener("input", () => this.inputLayer.empty());
     }
 
     private addFiles(newFiles: File[]) {

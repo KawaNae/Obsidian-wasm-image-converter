@@ -115,6 +115,7 @@
    ========================================================================== */
 
 .wasm-image-drop-zone {
+    position: relative;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -135,21 +136,29 @@
     margin-top: 8px;
 }
 
+/* The input layer has the focus, not the zone */
 .wasm-image-drop-zone:hover,
-.wasm-image-drop-zone:focus,
+.wasm-image-drop-zone:focus-within,
 .wasm-image-drop-zone--drag-over {
     border-color: var(--wimg-accent);
 }
 
-/* The zone is contenteditable only to receive a paste: no caret, no focus
-   ring (the border shows the focus), no highlight of a selection. */
-.wasm-image-drop-zone[contenteditable] {
-    outline: none;
+/* The empty editing host over the whole zone, which takes a paste. It
+   stays empty, so a long press on Android finds no word to select: only
+   Paste and one handle, put in the top left corner by the left alignment.
+   No caret, no focus ring (the zone's border shows the focus). */
+.wasm-image-drop-zone__input {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    text-align: left;
+    color: transparent;
     caret-color: transparent;
+    outline: none;
     -webkit-tap-highlight-color: transparent;
 }
 
-.wasm-image-drop-zone[contenteditable] ::selection {
+.wasm-image-drop-zone__input::selection {
     background-color: transparent;
 }
 
@@ -243,8 +252,10 @@
     object-fit: cover;
 }
 
+/* Above the zone's input layer, which covers the thumbnails */
 .wasm-image-modal .wasm-image-thumbnail__remove {
     position: absolute;
+    z-index: 2;
     top: 2px;
     right: 2px;
     width: 20px;
@@ -273,7 +284,9 @@
     box-shadow: none;
 }
 
-.wasm-image-thumbnail__item:hover .wasm-image-thumbnail__remove {
+/* The input layer takes the hover of the thumbnails: shown with the zone's */
+.wasm-image-drop-zone:hover .wasm-image-thumbnail__remove,
+.wasm-image-drop-zone:focus-within .wasm-image-thumbnail__remove {
     opacity: 1;
 }
 
